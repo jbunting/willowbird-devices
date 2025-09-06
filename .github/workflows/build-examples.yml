@@ -1,0 +1,51 @@
+# .github/workflows/build-examples.yml
+name: Build ESPHome Examples
+
+on:
+  push:
+    paths:
+      - 'examples/**'
+      - 'components/**'
+      - 'packages/**'
+  pull_request:
+    paths:
+      - 'examples/**'
+      - 'components/**'
+      - 'packages/**'
+
+jobs:
+  build-examples:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+
+      - name: Install ESPHome
+        run: |
+          python -m pip install --upgrade pip
+          pip install esphome
+
+      - name: Compile all example YAMLs
+        run: |
+          set -e
+          failed=0
+          for f in $(find examples -type f -name '*.yaml'); do
+            echo "::group::Compiling $f"
+            if esphome compile "$f"; then
+              echo "✅ Success: $f"
+            else
+              echo "❌ Failed: $f"
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+          if [ $failed -ne 0 ]; then
+            echo "One or more examples failed to build."
+            exit 1
+          fi
