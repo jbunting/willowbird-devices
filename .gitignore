@@ -1,0 +1,23 @@
+# ESPHome build artifacts
+.esphome/
+build/
+firmware.bin
+firmware*.bin
+
+# Common Python cruft
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Editor/IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

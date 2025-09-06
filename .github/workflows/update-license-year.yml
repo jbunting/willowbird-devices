@@ -1,0 +1,42 @@
+# .github/workflows/update-license-year.yml
+name: Update LICENSE Year
+permissions:
+  contents: write
+
+on:
+  schedule:
+    # Runs daily at 00:05 UTC
+    - cron: '5 0 * * *'
+  workflow_dispatch: # optional manual trigger
+
+jobs:
+  update-license:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Set up Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Update LICENSE year if needed
+        run: |
+          LICENSE_FILE="LICENSE"
+          CURRENT_YEAR=$(date +%Y)
+          EXISTING_YEAR=$(grep -oP '(?<=Copyright \(c\) )\d{4}' "$LICENSE_FILE" | head -1)
+
+          if [ "$EXISTING_YEAR" != "$CURRENT_YEAR" ]; then
+              sed -i.bak -E "0,/Copyright \(c\) [0-9]{4}/s//Copyright (c) $CURRENT_YEAR/" "$LICENSE_FILE"
+              rm -f "$LICENSE_FILE.bak"
+              git add "$LICENSE_FILE"
+              git commit -m "Update LICENSE year to $CURRENT_YEAR"
+              git push
+              echo "LICENSE year updated to $CURRENT_YEAR and committed."
+          else
+              echo "LICENSE year is already $CURRENT_YEAR. No changes needed."
+          fi
