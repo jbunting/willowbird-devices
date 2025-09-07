@@ -82,9 +82,9 @@ jobs:
             md5=$(md5sum "$f" | cut -d' ' -f1)
             entry="    {\"chipFamily\":\"$chip\",\"ota\":{\"md5\":\"$md5\",\"path\":\"$url\"}}"
             echo "$entry" >> $manifest
+            echo "  ]" >> $manifest
+            echo "}" >> $manifest
           done
-          echo "  ]" >> $manifest
-          echo "}" >> $manifest
 
       - name: Upload binaries + manifest to release
         uses: softprops/action-gh-release@v2
