@@ -41,7 +41,9 @@ jobs:
             name=$(basename "$f" .yaml)
             echo "::group::Building $name"
             esphome compile "$f"
-            bin=$(find .esphome/build/$name/.pioenvs -name '*.bin' | head -n1)
+            pwd
+            find devices/.esphome/build/$name/.pioenvs -type f
+            bin=$(find devices/.esphome/build/$name/.pioenvs -name '*.bin' | head -n1)
             if [ -f "$bin" ]; then
               cp "$bin" "dist/${name}.bin"
               echo "✅ Built $name → dist/${name}.bin"
