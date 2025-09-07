@@ -1,0 +1,97 @@
+# .github/workflows/build-devices.yml
+name: Build and Release ESPHome Devices
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'devices/**'
+      - 'components/**'
+      - 'packages/**'
+      - '.github/workflows/build-devices.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write   # needed for releases
+
+jobs:
+  build-devices:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+
+      - name: Install ESPHome
+        run: |
+          python -m pip install --upgrade pip
+          pip install esphome
+
+      - name: Compile device binaries
+        run: |
+          mkdir -p dist
+          date=$(date +'%Y.%m.%d')
+          build="${GITHUB_RUN_NUMBER}"
+          version="$date.$build"
+          for f in devices/*.yaml; do
+            [ -e "$f" ] || continue
+            name=$(basename "$f" .yaml)
+            echo "::group::Building $name"
+            esphome -s version $version compile "$f" 
+            bin=$(find devices/.esphome/build/$name/.pioenvs -name 'firmware.bin' | head -n1)
+            if [ -f "$bin" ]; then
+              cp "$bin" "dist/${name}.bin"
+              echo "✅ Built $name → dist/${name}.bin"
+            else
+              echo "❌ Failed to find binary for $name"
+              exit 1
+            fi
+            echo "::endgroup::"
+          done
+
+      - name: Generate manifest.json
+        run: |
+          date=$(date +'%Y.%m.%d')
+          build="${GITHUB_RUN_NUMBER}"
+          version="$date.$build"
+          for f in dist/*.bin; do
+            name=$(basename "$f" .bin)
+            manifest=dist/$name-manifest.json
+            yaml="devices/$name.yaml"
+            echo "{" > $manifest
+            echo "  \"name\": \"$name\"," >> $manifest
+            echo "  \"version\": \"$version\"," >> $manifest
+            echo "  \"builds\": [" >> $manifest
+
+            # Default
+            defines="$build_dir/../src/esphome/core/defines.h"
+
+            chip="ESP32"
+            if [ -f "$defines" ]; then
+              chip=$(grep 'ESPHOME_VARIANT' "$defines" | sed -E 's/.*"([^"]+)".*/\1/')
+            fi
+
+            url="https://github.com/${{ github.repository }}/releases/download/latest/$(basename $f)"
+            md5=$(md5sum "$f" | cut -d' ' -f1)
+            entry="    {\"chipFamily\":\"$chip\",\"ota\":{\"md5\":\"$md5\",\"path\":\"$url\"}}"
+            echo "$entry" >> $manifest
+          done
+          echo "  ]" >> $manifest
+          echo "}" >> $manifest
+
+      - name: Upload binaries + manifest to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest Device Builds
+          files: dist/*
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
