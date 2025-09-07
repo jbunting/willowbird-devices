@@ -1,6 +1,5 @@
 substitutions:
   name: "zwave-network-radio"
-  version: dev
 packages:
   tubezb.zw: github://tube0013/tube_gateways/models/current/tubeszb-zw-kit/tubeszb-zw.yaml
   willowbird-ota: !include
