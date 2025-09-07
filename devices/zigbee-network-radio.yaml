@@ -1,0 +1,29 @@
+substitutions:
+  name: "zigbee-network-radio"
+  version: dev
+packages:
+  tubeszb.efr32_mgm24: github://tube0013/tube_gateways/models/current/tubeszb-efr32-MGM24/firmware/ESPHome/tubeszb-mgm24.yaml
+esphome:
+  name: ${name}
+  name_add_mac_suffix: false
+  project:
+    name: jbunting.${name}
+    version: ${version}
+api:
+  encryption:
+    key: tJUHe0ttnXgoxZVYHc2xSAsFxwXucIvI+5MMqKXcN1Y=
+ota:
+  - platform: esphome
+  - platform: http_request
+http_request:
+  buffer_size_rx: 2048
+  buffer_size_tx: 2048
+update:
+  - platform: http_request
+    name: Firmware Update
+    source: https://github.com/jbunting/willowbird-devices/releases/download/latest/${name}-manifest.json
+    update_interval: 1min
+    on_update_available:
+      then:
+        - update.perform:
+
