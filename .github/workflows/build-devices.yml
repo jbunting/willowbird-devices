@@ -1,0 +1,80 @@
+# .github/workflows/build-devices.yml
+name: Build and Release ESPHome Devices
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'devices/*.yaml'
+      - 'components/**'
+      - 'packages/**'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write   # needed for releases
+
+jobs:
+  build-devices:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+
+      - name: Install ESPHome
+        run: |
+          python -m pip install --upgrade pip
+          pip install esphome
+
+      - name: Compile device binaries
+        run: |
+          mkdir -p dist
+          for f in devices/*.yaml; do
+            [ -e "$f" ] || continue
+            name=$(basename "$f" .yaml)
+            echo "::group::Building $name"
+            esphome compile "$f"
+            bin=$(find .esphome/build/$name/.pioenvs -name '*.bin' | head -n1)
+            if [ -f "$bin" ]; then
+              cp "$bin" "dist/${name}.bin"
+              echo "✅ Built $name → dist/${name}.bin"
+            else
+              echo "❌ Failed to find binary for $name"
+              exit 1
+            fi
+            echo "::endgroup::"
+          done
+
+      - name: Generate manifest.json
+        run: |
+          manifest=dist/manifest.json
+          echo "[" > $manifest
+          first=true
+          for f in dist/*.bin; do
+            url="https://github.com/${{ github.repository }}/releases/download/latest/$(basename $f)"
+            entry="{\"name\":\"$(basename $f .bin)\",\"url\":\"$url\"}"
+            if [ "$first" = true ]; then
+              echo "  $entry" >> $manifest
+              first=false
+            else
+              echo " ,$entry" >> $manifest
+            fi
+          done
+          echo "]" >> $manifest
+
+      - name: Upload binaries + manifest to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest Device Builds
+          files: dist/*
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
