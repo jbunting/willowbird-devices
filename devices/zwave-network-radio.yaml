@@ -5,5 +5,3 @@ packages:
   willowbird-ota: !include
     file: common/cicd.yaml
 api:
-  encryption:
-    key: ZfAzCacibEsmQYjFLvQZv2W1HyuHClPs9hfeJCGrPHc=
