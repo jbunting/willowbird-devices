@@ -1,0 +1,106 @@
+external_components:
+  - source:
+      type: git
+      url: https://github.com/ratgdo/esphome-ratgdo
+      ref: main
+    refresh: 1s
+
+esphome:
+  name: garage-doors
+  friendly_name: Garage Doors
+
+esp32:
+  board: esp32-s3-devkitc-1
+
+safe_mode:
+
+preferences:
+  flash_write_interval: 1min
+
+text_sensor:
+  - platform: version
+    name: "Firmware Version"
+
+# Enable logging
+logger:
+
+web_server:
+  port: 80
+  local: true
+
+prometheus:
+
+# Enable Home Assistant API
+api:
+  encryption:
+
+ota:
+  - platform: esphome
+
+# Remove this once we add ethernet
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  # on_connect:
+    # lambda: id(gdo_jeep).start_gdo();
+
+# ethernet:
+#   type: W5500
+#   clk_pin: GPIO13
+#   mosi_pin: GPIO11
+#   miso_pin: GPIO12
+#   cs_pin: GPIO14
+#   interrupt_pin: GPIO10
+#   reset_pin: GPIO9
+output:
+  - id: warning_led_output
+    platform: gpio
+    pin: GPIO10
+
+button:
+  - platform: restart
+    name: "Garage Door Restart"
+    id: restart_button
+
+light:
+  - id: warning_led
+    platform: binary
+    output: warning_led_output
+    effects:
+      - strobe:
+    internal: true
+
+ratgdo:
+    id: gdo_toy
+    input_gdo_pin: GPIO21
+    output_gdo_pin: GPIO16
+    input_obst_pin: none
+
+binary_sensor:
+  - platform: gpio
+    pin: GPIO15
+    id: temp
+
+# packages:
+  # jeep_garage_door: !include
+  #   file: common/garage-door.yaml
+  #   vars: 
+  #     id: jeep
+  #     name: Jeep
+  #     output_pin: GPIO36
+  #     input_pin: GPIO37
+  # van_garage_door: !include
+  #   file: common/ratgdo-door.yaml
+  #   vars: 
+  #     id: van
+  #     name: Van
+  #     output_pin: GPIO1
+  #     input_pin: GPIO2
+  # toy_garage_door: !include
+  #   file: common/ratgdo-door.yaml
+  #   vars: 
+  #     id: toy
+  #     name: Toy
+  #     output_pin: GPIO16
+  #     input_pin: GPIO21
+
