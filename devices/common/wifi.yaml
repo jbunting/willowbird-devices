@@ -1,0 +1,8 @@
+wifi:
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: rescue-${name}
+
+captive_portal:
+
+improv_serial:

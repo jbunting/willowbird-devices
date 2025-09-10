@@ -1,0 +1,26 @@
+substitutions:
+  name: "will-bed-sensor"
+  friendly_name: "Will Bed Sensor"
+
+esp32:
+  board: m5stack-atom
+  framework: 
+    type: esp-idf
+  
+# Enable logging
+logger:
+
+packages:
+  willowbird-ota: !include
+    file: common/cicd.yaml
+  willowbird-wifi: !include
+    file: common/wifi.yaml
+
+# Enable Home Assistant API
+api:
+
+web_server:
+  port: 80
+  version: 3
+  ota: false
+
