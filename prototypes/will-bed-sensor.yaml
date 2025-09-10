@@ -12,7 +12,7 @@ logger:
 
 packages:
   willowbird-ota: !include
-    file: common/cicd.yaml
+    file: common/core.yaml
   willowbird-wifi: !include
     file: common/wifi.yaml
 

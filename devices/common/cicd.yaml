@@ -1,13 +1,5 @@
 substitutions:
-  version: dev
   friendly_name: ${name}
-esphome:
-  name: ${name}
-  friendly_name: ${friendly_name}
-  name_add_mac_suffix: false
-  project:
-    name: jbunting.${name}
-    version: ${version}
 ota:
   - platform: esphome
   - platform: http_request

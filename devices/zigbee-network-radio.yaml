@@ -3,5 +3,7 @@ substitutions:
 packages:
   tubeszb.efr32_mgm24: github://tube0013/tube_gateways/models/current/tubeszb-efr32-MGM24/firmware/ESPHome/tubeszb-mgm24.yaml
   willowbird-ota: !include
+    file: common/core.yaml
+  willowbird-ota: !include
     file: common/cicd.yaml
 api:

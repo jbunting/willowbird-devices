@@ -2,6 +2,8 @@ substitutions:
   name: "bluetooth-proxy"
 packages:
   esphome.bluetooth-proxy: github://esphome/bluetooth-proxies/olimex/olimex-esp32-poe-iso.yaml
+  willowbird-core: !include
+    file: common/core.yaml
   willowbird-ota: !include
     file: common/cicd.yaml
 api:
