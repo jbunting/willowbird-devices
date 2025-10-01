@@ -1,7 +1,6 @@
 substitutions:
   friendly_name: ${name}
 ota:
-  - platform: esphome
   - platform: http_request
 http_request:
   buffer_size_rx: 2048

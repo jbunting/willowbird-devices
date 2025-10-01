@@ -1,0 +1,325 @@
+substitutions:
+  name: will-alarm-clock
+  cpu_frequency: 240MHz
+  matrix_pin: GPIO32 
+  buzzer_pin: GPIO15
+  battery_pin: GPIO34 
+  ldr_pin: GPIO35 
+  left_button_pin: GPIO26 
+  mid_button_pin: GPIO27 
+  right_button_pin: GPIO14 
+  scl_pin: GPIO22 
+  sda_pin: GPIO21 
+
+external_components:
+    - source:
+        type: git
+        url: https://github.com/lubeda/EspHoMaTriXv2
+        ref: 2025.7.1
+      refresh: 600s
+      components: [ ehmtxv2 ]
+
+packages:
+  willowbird-ota: !include
+    file: common/core.yaml
+  willowbird-wifi: !include
+    file: common/wifi.yaml
+
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      name: ESP IP Address
+    mac_address:
+      name: ESP Mac Wifi Address
+  
+esphome:
+  on_boot:
+    then:
+      - ds1307.read_time:
+esp32:
+  board: esp32dev
+  cpu_frequency: $cpu_frequency    
+  framework:
+    type: esp-idf
+    version: recommended
+
+output:
+  - platform: gpio
+    pin:
+      number: $buzzer_pin
+      ignore_strapping_warning: true
+    id: buzzer_pin
+
+
+switch:
+  - platform: template
+    name: "Auto-Adjust Brightness"
+    id: switch_autobrightness
+    icon: mdi:brightness-auto
+    restore_mode: RESTORE_DEFAULT_ON
+    lambda: |-
+      if (id(aab_enable)) {
+        return true;
+      } else {
+        return false;
+      }
+    turn_on_action:
+      lambda: |-
+        id(aab_enable) = true;
+    turn_off_action:
+      lambda: |-
+        id(aab_enable) = false;
+  - platform: template
+    name: "$name Alarm Enabled"
+    id: alarm_enabled
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    turn_on_action: 
+    - logger.log: Enabling Alarm
+    - lambda: |-
+        id(rgb8x32).show_alarm(200, 0, 0);
+    turn_off_action:
+    - logger.log: Disabling Alarm
+    - lambda: |-
+        id(rgb8x32).hide_alarm();
+
+
+globals:
+  # aab = auto-adjustable brightness
+  - id: aab_enable
+    type: "bool"
+    restore_value: true
+    initial_value: "true"
+  - id: aab_add
+    type: int
+    initial_value: '10'
+  - id: aab_max
+    type: int
+    initial_value: '220'
+  - id: aab_min
+    type: int
+    initial_value: '20'
+
+font:
+  - file: fonts/MatrixChunky6.ttf
+    id: px6_font
+    size: 6
+    glyphs:  |-
+      ! "#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz°
+
+binary_sensor:
+  - platform: status
+    name: "$name Status"
+  - platform: gpio
+    pin:
+      number: $left_button_pin
+      mode: INPUT_PULLUP
+      inverted: true
+    name: "Left button"
+  - platform: gpio
+    pin:
+      number: $mid_button_pin
+      mode: INPUT_PULLUP
+      inverted: true
+    name: "Middle button"
+  - platform: gpio
+    pin:
+      number: $right_button_pin
+      mode: INPUT_PULLUP
+      inverted: true
+    name: "Right button"
+    on_multi_click:
+      - timing:
+          - ON for at least 0.5s
+        then:
+          - switch.toggle: alarm_enabled
+
+logger:
+  level: DEBUG
+
+
+api:
+  custom_services: true
+
+sensor:
+  - platform: sht3xd
+    temperature:
+      name: "$name Temperature"
+      filters:
+      - lambda: return x * (9.0/5.0) + 32.0;
+      unit_of_measurement: "°F"
+    humidity:
+      name: "$name Relative Humidity"
+    update_interval: 60s
+  - platform: adc
+    pin: $battery_pin
+    name: "$name Battery"
+    id: battery_voltage
+    update_interval: 10s
+    device_class: battery
+    accuracy_decimals: 0
+    attenuation: auto
+    filters:
+      - sliding_window_moving_average:
+          window_size: 15
+          send_every: 15
+          send_first_at: 1
+      - multiply: 1.6
+      - lambda: |-
+          auto r = ((x - 3) / 0.69 * 100.00);
+          if (r >= 100) return 100;
+          if (r > 0) return r;
+          if (r <= 0) return 1;
+          return 0;
+    unit_of_measurement: '%'
+  - platform: adc
+    id: light_sensor
+    name: "$name Illuminance"
+    pin: $ldr_pin
+    update_interval: 10s
+    attenuation: auto
+    unit_of_measurement: lx
+    device_class: illuminance
+    accuracy_decimals: 0
+    filters:
+      - lambda: |-
+          return (x / 10000.0) * 2000000.0 - 15 ;
+    on_value:
+      then:
+        - lambda: |-
+            if ( id(aab_enable) ) {
+              int n = x / 4 + id(aab_add); // new_value
+              if (n > id(aab_max)) n = id(aab_max);
+              if (n < id(aab_min)) n = id(aab_min);
+              int c = id(rgb8x32)->get_brightness(); // current value
+              c = c>0?c:1 ;
+              int d = (n - c) * 100 / c; // diff in %
+              if ( abs(d) > 2 ) id(rgb8x32)->set_brightness(n);
+            }
+
+web_server:
+
+i2c:
+  sda: $sda_pin
+  scl: $scl_pin
+  scan: true
+  id: i2cbus
+
+light:
+  - platform: esp32_rmt_led_strip
+    id: ehmtx_light
+    rgb_order: GRB
+    pin: $matrix_pin
+    num_leds: 256
+    chipset: ws2812
+    name: "$name Light"
+    restore_mode: ALWAYS_OFF
+
+time:
+  - platform: homeassistant
+    on_time_sync:
+      then:
+        ds1307.write_time:
+  - platform: ds1307
+    update_interval: never
+    id: ehmtx_time
+
+display:
+  - platform: addressable_light
+    id: ehmtx_display
+    addressable_light_id: ehmtx_light
+    width: 32
+    height: 8
+    pixel_mapper: |-
+      if (y % 2 == 0) {
+        return (y * 32) + x;
+      }
+      return (y * 32) + (31 - x);
+    rotation: 0°
+    update_interval: 16ms
+    auto_clear_enabled: false
+    lambda: |-
+      id(rgb8x32)->tick();
+      id(rgb8x32)->draw();
+
+ehmtxv2:
+  id: rgb8x32
+  icons2html: true
+  matrix_component: ehmtx_display
+  time_component: ehmtx_time
+  time_format: "%I:%M"
+  date_format: "%m-%d"
+  show_seconds: false
+  default_font_id: px6_font
+  default_font_yoffset: 7
+  special_font_id: px6_font
+  special_font_yoffset: 7
+  show_dow: true
+  week_start_monday: false
+  iconscache: true
+
+  # until here
+  icons:
+    - id: error
+      lameid: 40530
+    - id: home_assistant
+      lameid: 47693
+    - id: temperature
+      lameid: 2056
+    - id: lightbulb
+      lameid: 1762
+    - id: speaker
+      lameid: 9136
+    - id: print3d
+      lameid: 55700
+    - id: internet
+      lameid: 51061
+    - lameid: 20275
+      id: temp
+    - lameid: 29129
+      id: garage
+    - lameid: 24087
+      id: door
+    - lameid: 22148
+      id: wind
+    - lameid: 6427
+      id: rain
+    - lameid: 1232
+      id: phone
+    - lameid: 9272
+      id: fire
+    - lameid: 9754
+      id: tv
+    - lameid: 23726
+      id: nature
+    - lameid: 25808
+      id: work
+    - lameid: 22841
+      id: bike
+    - lameid: 32930
+      id: power
+    - lameid: 27283
+      id: solar
+    - lameid: 26034
+      id: energy
+    - lameid: 5807
+      id: sun
+    - lameid: 34801
+      id: shopping
+    - lameid: 37533
+      id: thunder
+    - lameid: 5313
+      id: mic
+    - lameid: 102
+      id: birthday
+    - lameid: 1782
+      id: xmastree
+    - id: lock
+      lameid: 7775
+  on_empty_queue:
+    then:
+      - lambda: |-
+          id(rgb8x32).set_infotext_color(20,20,20,20,20,20,false,1);
+          id(rgb8x32).icon_clock("calendar|day#0",1440,10,false);
+
+

@@ -8,3 +8,5 @@ esphome:
   project:
     name: jbunting.${name}
     version: ${version}
+ota:
+  - platform: esphome

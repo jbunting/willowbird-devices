@@ -1,0 +1,81 @@
+substitutions:
+  name: alarm-demo
+  friendly_name: Alarm Demo
+esphome:
+  name: ${name}
+  name_add_mac_suffix: true
+  friendly_name: ${friendly_name}
+  min_version: 2025.5.0
+
+esp32:
+  board: m5stack-atom
+  cpu_frequency: 240MHz
+  framework:
+    type: esp-idf
+
+external_components:
+  - source: 
+      type: local
+      path: ../components
+    components: [ alarm ]
+
+wifi:
+  ap:
+logger:
+api:
+web_server:
+
+i2s_audio:
+  - id: i2s_audio_bus
+    i2s_lrclk_pin: GPIO33
+    i2s_bclk_pin: GPIO19
+speaker:
+  - platform: i2s_audio
+    id: echo_speaker
+    i2s_dout_pin: GPIO22
+    dac_type: external
+    bits_per_sample: 16bit
+    sample_rate: 16000
+    channel: stereo  # The Echo has poor playback audio quality when using mon audio
+    buffer_duration: 60ms
+
+time:
+  - platform: host
+    id: sntp_time
+    timezone: America/New_York
+
+rtttl:
+  id: buzzer
+  speaker: echo_speaker
+
+alarm:
+  id: morning_alarm
+  time_id: sntp_time
+  rtttl_id: buzzer
+  hour: 11
+  minute: 05
+  rtttl_sequence: "d=4,o=5,b=140:c,g,a,g,c6"
+    #  condition: !lambda |-
+    #    return true;
+  active_sensor:
+  snoozed_sensor:
+
+button:
+  - platform: template
+    name: "Stop Alarm"
+    on_press:
+      - lambda: |-
+          id(morning_alarm).stop();
+
+  - platform: template
+    name: "Snooze Alarm"
+    on_press:
+      - lambda: |-
+          id(morning_alarm).snooze(15 * 1000);  // 15 seconds
+
+  - platform: template
+    name: "Unsnooze Alarm"
+    on_press:
+      - lambda: |-
+          id(morning_alarm).unsnooze();
+
