@@ -1,0 +1,42 @@
+name: Build PCB Outputs
+
+on:
+  push:
+    branches:
+      - main
+      - dev/*
+  push:
+    tags:
+      - "board-*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install KiCad
+        uses: INTI-CMNB/kicad-automation-scripts@v1
+        # or apt-get KiCad if running container
+
+      - name: Generate fabrication outputs
+        run: |
+          mkdir outputs
+          kicad-cli sch export pdf kicad_project/my_board.kicad_sch -o outputs/schematic.pdf
+          kicad-cli pcb export gerbers kicad_project/my_board.kicad_pcb -o outputs/gerbers
+          kicad-cli pcb export drill    kicad_project/my_board.kicad_pcb -o outputs/drill
+          kicad-cli sch export bom      kicad_project/my_board.kicad_sch -o outputs/bom.csv
+          kicad-cli pcb export pos      kicad_project/my_board.kicad_pcb -o outputs/pos.csv
+          zip -r outputs.zip outputs
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            outputs/schematic.pdf
+            outputs/gerbers/*
+            outputs/drill/*
+            outputs/*.csv
+          tag_name: ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
