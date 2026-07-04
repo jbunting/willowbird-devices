@@ -8,6 +8,7 @@ on:
       - 'devices/**'
       - 'components/**'
       - 'packages/**'
+      - 'requirements.txt'
       - '.github/workflows/build-devices.yml'
   workflow_dispatch: {}
 
@@ -34,17 +35,23 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Compute version
+        id: version
+        run: |
+          # CalVer: YYYY.MM.DD.<build> — build monotonically increases per run
+          version="$(date +'%Y.%m.%d').${GITHUB_RUN_NUMBER}"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Building version $version"
+
       - name: Compile device binaries
         run: |
           mkdir -p dist
-          date=$(date +'%Y.%m.%d')
-          build="${GITHUB_RUN_NUMBER}"
-          version="$date.$build"
           for f in devices/*.yaml; do
             [ -e "$f" ] || continue
             name=$(basename "$f" .yaml)
             echo "::group::Building $name"
-            esphome -s version $version compile "$f" 
+            esphome -s version "$VERSION" compile "$f"
             bin=$(find devices/.esphome/build/$name/.pioenvs -name 'firmware.bin' | head -n1)
             if [ -f "$bin" ]; then
               cp "$bin" "dist/${name}.bin"
@@ -56,42 +63,60 @@ jobs:
             echo "::endgroup::"
           done
 
-      - name: Generate manifest.json
+      - name: Generate manifests
         run: |
-          date=$(date +'%Y.%m.%d')
-          build="${GITHUB_RUN_NUMBER}"
-          version="$date.$build"
           for f in dist/*.bin; do
             name=$(basename "$f" .bin)
-            manifest=dist/$name-manifest.json
-            yaml="devices/$name.yaml"
-            echo "{" > $manifest
-            echo "  \"name\": \"$name\"," >> $manifest
-            echo "  \"version\": \"$version\"," >> $manifest
-            echo "  \"builds\": [" >> $manifest
+            manifest="dist/${name}-manifest.json"
 
-            # Default
-            defines="$build_dir/../src/esphome/core/defines.h"
-
+            # chipFamily must equal the compiled ESPHOME_VARIANT (e.g. ESP32, ESP32-S3);
+            # the OTA update component matches on `chipFamily == ESPHOME_VARIANT`.
             chip="ESP32"
+            defines="devices/.esphome/build/${name}/src/esphome/core/defines.h"
             if [ -f "$defines" ]; then
-              chip=$(grep 'ESPHOME_VARIANT' "$defines" | sed -E 's/.*"([^"]+)".*/\1/')
+              variant=$(grep -m1 'ESPHOME_VARIANT' "$defines" | sed -E 's/.*"([^"]+)".*/\1/')
+              [ -n "$variant" ] && chip="$variant"
             fi
 
-            url="https://github.com/${{ github.repository }}/releases/download/latest/$(basename $f)"
+            # Point OTA at the immutable versioned release asset so a frozen device
+            # keeps pulling the exact build it was pinned to.
+            url="https://github.com/${{ github.repository }}/releases/download/${VERSION}/${name}.bin"
             md5=$(md5sum "$f" | cut -d' ' -f1)
-            entry="    {\"chipFamily\":\"$chip\",\"ota\":{\"md5\":\"$md5\",\"path\":\"$url\"}}"
-            echo "$entry" >> $manifest
-            echo "  ]" >> $manifest
-            echo "}" >> $manifest
+
+            {
+              printf '{\n'
+              printf '  "name": "%s",\n' "$name"
+              printf '  "version": "%s",\n' "$VERSION"
+              printf '  "builds": [\n'
+              printf '    {"chipFamily": "%s", "ota": {"md5": "%s", "path": "%s"}}\n' "$chip" "$md5" "$url"
+              printf '  ]\n'
+              printf '}\n'
+            } > "$manifest"
+
+            echo "::group::$manifest"
+            cat "$manifest"
+            echo "::endgroup::"
           done
 
-      - name: Upload binaries + manifest to release
+      - name: Publish versioned release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: ${{ steps.version.outputs.version }}
+          files: dist/*
+          fail_on_unmatched_files: true
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update rolling latest release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
           name: Latest Device Builds
+          body: "Rolling release — always the newest build. Currently: ${{ steps.version.outputs.version }}"
           files: dist/*
           fail_on_unmatched_files: true
+          make_latest: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
