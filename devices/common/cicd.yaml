@@ -13,5 +13,11 @@ update:
     update_interval: 1min
     on_update_available:
       then:
-        - update.perform:
+        # Only auto-install on mainline builds (auto_update=true). Dev builds
+        # still report the available update but never flash themselves.
+        - if:
+            condition:
+              lambda: "return ${auto_update};"
+            then:
+              - update.perform:
 
