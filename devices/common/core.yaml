@@ -1,6 +1,9 @@
 substitutions:
   version: dev
   friendly_name: ${name}
+  # Auto-OTA gate. Defaults off so dev/local builds never self-update;
+  # the release CI overrides this to "true" for mainline builds.
+  auto_update: "false"
 esphome:
   name: ${name}
   friendly_name: ${friendly_name}
