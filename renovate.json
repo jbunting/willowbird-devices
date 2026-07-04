@@ -1,0 +1,37 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits"
+  ],
+  "packageRules": [
+    {
+      "description": "Group all ESPHome updates together",
+      "matchPackageNames": ["esphome", "esphome/esphome"],
+      "groupName": "esphome"
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "ESPHome external_components git refs annotated with a renovate comment",
+      "managerFilePatterns": [
+        "/(^|/)(devices|prototypes|examples)/.+\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( versioning=(?<versioning>\\S+))?\\s*\\n\\s*ref:\\s*(?<currentValue>\\S+)"
+      ]
+    },
+    {
+      "customType": "regex",
+      "description": "ESPHome github:// package includes pinned with @version and a renovate comment",
+      "managerFilePatterns": [
+        "/(^|/)(devices|prototypes|examples)/.+\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( versioning=(?<versioning>\\S+))?\\s*\\n\\s*[^\\n]*github://[^@\\s\"]+@(?<currentValue>[^\\s\"]+)"
+      ]
+    }
+  ]
+}
