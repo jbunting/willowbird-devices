@@ -38,12 +38,16 @@ api:
 ota:
   - platform: esphome
 
-# Remove this once we add ethernet
+# Remove this once we add ethernet.
+# WiFi is provisioned at bootstrap via improv/captive portal — credentials are
+# never baked into the image. See scripts/push.sh.
 wifi:
-  ssid: !secret wifi_ssid
-  password: !secret wifi_password
-  # on_connect:
-    # lambda: id(gdo_jeep).start_gdo();
+  ap:
+    ssid: rescue-garage-doors
+
+captive_portal:
+
+improv_serial:
 
 # ethernet:
 #   type: W5500

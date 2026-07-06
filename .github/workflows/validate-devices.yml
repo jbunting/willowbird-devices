@@ -41,32 +41,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Generate placeholder secrets
-        run: |
-          # A compile check still needs every !secret to resolve. Scan the
-          # configs for referenced secret names and emit placeholders so the
-          # build doesn't need real credentials. Keys ending in "key" get a
-          # valid 32-byte base64 value (e.g. the API encryption key).
-          secrets=devices/secrets.yaml
-          : > "$secrets"
-          grep -rhoE '!secret[[:space:]]+[A-Za-z0-9_]+' devices \
-            | awk '{print $2}' | sort -u \
-            | while read -r key; do
-                case "$key" in
-                  *key)  printf '%s: "%s"\n' "$key" "$(openssl rand -base64 32)" >> "$secrets" ;;
-                  *)     printf '%s: "placeholder"\n' "$key" >> "$secrets" ;;
-                esac
-              done
-          echo "Generated $secrets:"
-          cat "$secrets"
+      # No secrets step: configs must not use !secret (enforced by
+      # lint-configs.yml), so a compile check needs no credentials.
 
       - name: Compile device configs
         run: |
           failed=0
           for f in devices/*.yaml; do
             [ -e "$f" ] || continue
-            # secrets.yaml is generated above, not a device config.
-            [ "$(basename "$f")" = "secrets.yaml" ] && continue
             echo "::group::Compiling $f"
             if esphome compile "$f"; then
               echo "✅ $f"
