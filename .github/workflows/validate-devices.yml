@@ -1,0 +1,80 @@
+# .github/workflows/validate-devices.yml
+name: Validate ESPHome Devices
+
+# Compile-check device configs on PRs. This does NOT release anything — the
+# release pipeline lives in build-devices.yml and only runs on main.
+on:
+  pull_request:
+    paths:
+      - 'devices/**'
+      - 'components/**'
+      - 'packages/**'
+      - 'requirements.txt'
+      - '.github/workflows/validate-devices.yml'
+  workflow_dispatch: {}
+
+jobs:
+  validate-devices:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+
+      - name: Cache PlatformIO + pip
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: pio-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            pio-${{ runner.os }}-
+
+      - name: Install ESPHome
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Generate placeholder secrets
+        run: |
+          # A compile check still needs every !secret to resolve. Scan the
+          # configs for referenced secret names and emit placeholders so the
+          # build doesn't need real credentials. Keys ending in "key" get a
+          # valid 32-byte base64 value (e.g. the API encryption key).
+          secrets=devices/secrets.yaml
+          : > "$secrets"
+          grep -rhoE '!secret[[:space:]]+[A-Za-z0-9_]+' devices \
+            | awk '{print $2}' | sort -u \
+            | while read -r key; do
+                case "$key" in
+                  *key)  printf '%s: "%s"\n' "$key" "$(openssl rand -base64 32)" >> "$secrets" ;;
+                  *)     printf '%s: "placeholder"\n' "$key" >> "$secrets" ;;
+                esac
+              done
+          echo "Generated $secrets:"
+          cat "$secrets"
+
+      - name: Compile device configs
+        run: |
+          failed=0
+          for f in devices/*.yaml; do
+            [ -e "$f" ] || continue
+            echo "::group::Compiling $f"
+            if esphome compile "$f"; then
+              echo "✅ $f"
+            else
+              echo "❌ $f"
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+          if [ "$failed" -ne 0 ]; then
+            echo "One or more device configs failed to compile."
+            exit 1
+          fi
