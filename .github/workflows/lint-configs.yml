@@ -1,0 +1,36 @@
+# .github/workflows/lint-configs.yml
+name: Lint Device Configs
+
+# Fast, compile-free checks on device configs.
+on:
+  pull_request:
+    paths:
+      - 'devices/**'
+      - 'packages/**'
+      - 'components/**'
+      - 'prototypes/**'
+      - 'examples/**'
+      - '.github/workflows/lint-configs.yml'
+  workflow_dispatch: {}
+
+jobs:
+  no-baked-secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Block !secret usage
+        run: |
+          # Secrets must never be baked into firmware images — those images are
+          # published as public GitHub releases. Credentials are provisioned at
+          # bootstrap via scripts/push.sh instead. Fail if any tracked config
+          # uses ESPHome's !secret tag.
+          if git grep -nP '!secret\b' -- \
+               'devices/**' 'packages/**' 'components/**' \
+               'prototypes/**' 'examples/**'; then
+            echo
+            echo "::error::Found '!secret' above. Do not bake secrets into images — provision at bootstrap via scripts/push.sh."
+            exit 1
+          fi
+          echo "OK: no !secret usage found in device configs."
