@@ -43,29 +43,36 @@ For custom components, copy the component folder into your own ESPHome `componen
 
 ## Manual push (dev / bootstrap)
 
-`scripts/push.sh` wraps ESPHome for local flashing and pulls secrets from
-Bitwarden via [`rbw`](https://github.com/doy/rbw). Manual builds are always
+`scripts/push.sh` wraps ESPHome for local flashing. Manual builds are always
 *dev* builds (`version=dev`, `auto_update=false`), so a hand-flashed device
 never self-updates from the GitHub `latest` release — mainline builds only
 come from CI.
 
 ```bash
-scripts/push.sh secrets                # write devices/secrets.yaml from Bitwarden
-scripts/push.sh flash <device> [target]   # compile + upload (USB or OTA)
-scripts/push.sh ota <device> <host>       # upload over the network
-scripts/push.sh bootstrap <device> [port] # first-time USB flash of a new device
-scripts/push.sh logs <device> [target]    # stream logs
+scripts/push.sh flash <device> [target]     # compile + upload (USB or OTA)
+scripts/push.sh ota <device> <host>         # upload over the network
+scripts/push.sh bootstrap <device> [port]   # first USB flash + WiFi provisioning
+scripts/push.sh provision [port]            # provision WiFi over Improv Serial only
+scripts/push.sh logs <device> [target]      # stream logs
 ```
 
 `<device>` is a config basename (e.g. `bluetooth-proxy`) or a path to a
 `.yaml`. `<target>` is a serial port or a network host/IP; omit it to let
 ESPHome prompt.
 
-Secrets live in a single Bitwarden item (default name `willowbird-devices`,
-override with `WILLOWBIRD_BW_ITEM`) with these custom fields:
+### Secrets never live in the firmware
 
-- `wifi_ssid`, `wifi_password` — required
-- `api_encryption_key`, `ota_password` — optional (written only if present)
+WiFi credentials are **not** baked into images (a CI lint blocks `!secret` in
+configs, since built images are published as public releases). Instead they are
+sent to the device once, at bootstrap, over
+[Improv Serial](https://www.improv-wifi.com/serial/) and stored in the device's
+flash. `bootstrap` flashes over USB and then provisions; `provision` does just
+the WiFi step.
+
+Credentials come from a single Bitwarden item (default `willowbird-devices`,
+override with `WILLOWBIRD_BW_ITEM`) via [`rbw`](https://github.com/doy/rbw),
+with custom fields `wifi_ssid` and `wifi_password`. The provisioner
+(`scripts/improv_provision.py`) needs `pyserial` (installed alongside ESPHome).
 
 ---
 
