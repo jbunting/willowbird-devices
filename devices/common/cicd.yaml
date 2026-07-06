@@ -8,16 +8,74 @@ http_request:
   buffer_size_tx: 2048
 update:
   - platform: http_request
+    id: firmware_update
     name: Firmware Update
     source: https://github.com/jbunting/willowbird-devices/releases/download/latest/${name}-manifest.json
     update_interval: 1min
     on_update_available:
       then:
-        # Only auto-install on mainline builds (auto_update=true). Dev builds
-        # still report the available update but never flash themselves.
+        # Auto-install only when it's a mainline build (auto_update=true) AND the
+        # user hasn't frozen this device. Dev/frozen devices still report the
+        # available update below; they just don't flash themselves.
         - if:
             condition:
-              lambda: "return ${auto_update};"
+              lambda: "return ${auto_update} && !id(freeze_version).state;"
             then:
               - update.perform:
 
+# --- Firmware status (#8) + freeze switch (#9) ---
+
+switch:
+  - platform: template
+    name: Freeze Firmware Version
+    id: freeze_version
+    icon: mdi:snowflake
+    entity_category: config
+    optimistic: true
+    # Persist the freeze choice across reboots/OTA.
+    restore_mode: RESTORE_DEFAULT_OFF
+
+text_sensor:
+  - platform: template
+    name: Firmware Version
+    id: current_firmware_version
+    icon: mdi:tag
+    entity_category: diagnostic
+    # Set at compile time from the project version substitution.
+    lambda: 'return {"${version}"};'
+
+  - platform: template
+    name: Build Channel
+    id: build_channel
+    icon: mdi:source-branch
+    entity_category: diagnostic
+    # Mainline builds are the only ones compiled with auto_update=true.
+    lambda: 'return {${auto_update} ? "mainline" : "dev"};'
+
+  - platform: template
+    name: Available Firmware Version
+    id: available_firmware_version
+    icon: mdi:cloud-tag
+    entity_category: diagnostic
+    lambda: |-
+      const std::string &latest = id(firmware_update).update_info.latest_version;
+      if (latest.empty())
+        return {};
+      return {latest};
+
+binary_sensor:
+  - platform: template
+    name: Firmware Up To Date
+    id: firmware_up_to_date
+    icon: mdi:check-decagram
+    entity_category: diagnostic
+    lambda: |-
+      switch (id(firmware_update).state) {
+        case update::UPDATE_STATE_NO_UPDATE:
+          return true;
+        case update::UPDATE_STATE_AVAILABLE:
+        case update::UPDATE_STATE_INSTALLING:
+          return false;
+        default:
+          return {};  // UNKNOWN — no check has completed yet
+      }
