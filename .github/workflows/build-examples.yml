@@ -1,22 +1,55 @@
 # .github/workflows/build-examples.yml
 name: Build ESPHome Examples
 
+# On PRs this runs on every PR (no path filter) so the `build-examples` gate
+# always reports and can be a required check; the `changes` job skips the
+# compile when no example-related files changed. On push it keeps the path
+# filter (no gating needed there).
 on:
   push:
     paths:
       - 'examples/**'
       - 'components/**'
       - 'packages/**'
-  pull_request:
-    paths:
-      - 'examples/**'
-      - 'components/**'
-      - 'packages/**'
+  pull_request: {}
+  workflow_dispatch: {}
 
 jobs:
-  build-examples:
+  changes:
     runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
+      - name: Detect relevant changes
+        id: filter
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # Non-PR events (push / workflow_dispatch): always build.
+          if [ -z "$BASE" ]; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            echo "Not a PR; building examples."
+            exit 0
+          fi
+          changed=$(git diff --name-only "$BASE...$HEAD")
+          echo "Changed files:"; echo "$changed"
+          if echo "$changed" | grep -qE '^(examples/|components/|packages/|requirements\.txt|\.github/workflows/build-examples\.yml)'; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "relevant=false" >> "$GITHUB_OUTPUT"
+            echo "No example-related changes."
+          fi
+
+  compile-examples:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -49,3 +82,23 @@ jobs:
             echo "One or more examples failed to build."
             exit 1
           fi
+
+  # Required check. Always runs so it reports on every PR: passes trivially when
+  # no example files changed, otherwise reflects the compile result.
+  build-examples:
+    needs: [changes, compile-examples]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Gate
+        run: |
+          echo "relevant=${{ needs.changes.outputs.relevant }} compile=${{ needs['compile-examples'].result }}"
+          if [ "${{ needs.changes.outputs.relevant }}" != "true" ]; then
+            echo "No example-related changes — nothing to build."
+            exit 0
+          fi
+          if [ "${{ needs['compile-examples'].result }}" != "success" ]; then
+            echo "One or more examples failed to build."
+            exit 1
+          fi
+          echo "All examples built."
