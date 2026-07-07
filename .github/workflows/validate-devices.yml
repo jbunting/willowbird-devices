@@ -21,7 +21,7 @@ jobs:
       devices: ${{ steps.set-matrix.outputs.devices }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Discover device configs
         id: set-matrix
@@ -44,7 +44,7 @@ jobs:
         device: ${{ fromJSON(needs.discover.outputs.devices) }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
         uses: actions/setup-python@v4
