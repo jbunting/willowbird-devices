@@ -14,9 +14,34 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  validate-devices:
+  # Build the list of device configs so each one can compile on its own runner.
+  discover:
     runs-on: ubuntu-latest
+    outputs:
+      devices: ${{ steps.set-matrix.outputs.devices }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
+      - name: Discover device configs
+        id: set-matrix
+        run: |
+          json=$(ls devices/*.yaml \
+            | xargs -n1 basename \
+            | sed 's/\.yaml$//' \
+            | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "devices=$json" >> "$GITHUB_OUTPUT"
+          echo "Discovered devices: $json"
+
+  # One parallel job per device. fail-fast: false so every device reports even
+  # if another fails.
+  compile:
+    needs: discover
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        device: ${{ fromJSON(needs.discover.outputs.devices) }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -32,8 +57,11 @@ jobs:
           path: |
             ~/.platformio
             ~/.cache/pip
-          key: pio-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+          # Per-device cache preserves each device's incremental build; seed
+          # from any prior cache for the same OS.
+          key: pio-${{ runner.os }}-${{ matrix.device }}-${{ hashFiles('requirements.txt') }}
           restore-keys: |
+            pio-${{ runner.os }}-${{ matrix.device }}-
             pio-${{ runner.os }}-
 
       - name: Install ESPHome
@@ -44,21 +72,21 @@ jobs:
       # No secrets step: configs must not use !secret (enforced by
       # lint-configs.yml), so a compile check needs no credentials.
 
-      - name: Compile device configs
+      - name: Compile ${{ matrix.device }}
+        run: esphome compile "devices/${{ matrix.device }}.yaml"
+
+  # Single stable check that passes only if every device compiled. Useful as a
+  # required status check without depending on the matrix leg names.
+  validate-devices:
+    needs: [discover, compile]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify all device compiles passed
         run: |
-          failed=0
-          for f in devices/*.yaml; do
-            [ -e "$f" ] || continue
-            echo "::group::Compiling $f"
-            if esphome compile "$f"; then
-              echo "✅ $f"
-            else
-              echo "❌ $f"
-              failed=1
-            fi
-            echo "::endgroup::"
-          done
-          if [ "$failed" -ne 0 ]; then
+          echo "discover: ${{ needs.discover.result }}, compile: ${{ needs.compile.result }}"
+          if [ "${{ needs.compile.result }}" != "success" ]; then
             echo "One or more device configs failed to compile."
             exit 1
           fi
+          echo "All device configs compiled."
