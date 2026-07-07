@@ -1,16 +1,11 @@
 # .github/workflows/lint-configs.yml
 name: Lint Device Configs
 
-# Fast, compile-free checks on device configs.
+# Fast, compile-free check. Runs on every PR (no path filter) so the
+# `no-baked-secrets` check always reports and can be a required check — the
+# git grep is cheap and always relevant.
 on:
-  pull_request:
-    paths:
-      - 'devices/**'
-      - 'packages/**'
-      - 'components/**'
-      - 'prototypes/**'
-      - 'examples/**'
-      - '.github/workflows/lint-configs.yml'
+  pull_request: {}
   workflow_dispatch: {}
 
 jobs:

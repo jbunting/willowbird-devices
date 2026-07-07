@@ -1,21 +1,52 @@
 # .github/workflows/validate-devices.yml
 name: Validate ESPHome Devices
 
-# Compile-check device configs on PRs. This does NOT release anything — the
+# Runs on EVERY PR so the `validate-devices` gate always reports a status and
+# can be a required check. The `changes` job decides whether the (expensive)
+# device compiles actually run — a PR that touches no device files still gets a
+# green gate without building anything. This does NOT release anything; the
 # release pipeline lives in build-devices.yml and only runs on main.
 on:
-  pull_request:
-    paths:
-      - 'devices/**'
-      - 'components/**'
-      - 'packages/**'
-      - 'requirements.txt'
-      - '.github/workflows/validate-devices.yml'
+  pull_request: {}
   workflow_dispatch: {}
 
 jobs:
+  # Decide whether anything device-related changed.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Detect relevant changes
+        id: filter
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # Non-PR events (workflow_dispatch): always run the full validation.
+          if [ -z "$BASE" ]; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            echo "Not a PR; running full validation."
+            exit 0
+          fi
+          changed=$(git diff --name-only "$BASE...$HEAD")
+          echo "Changed files:"; echo "$changed"
+          if echo "$changed" | grep -qE '^(devices/|components/|packages/|requirements\.txt|\.github/workflows/validate-devices\.yml)'; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "relevant=false" >> "$GITHUB_OUTPUT"
+            echo "No device-related changes."
+          fi
+
   # Build the list of device configs so each one can compile on its own runner.
   discover:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     outputs:
       devices: ${{ steps.set-matrix.outputs.devices }}
@@ -36,7 +67,8 @@ jobs:
   # One parallel job per device. fail-fast: false so every device reports even
   # if another fails.
   compile:
-    needs: discover
+    needs: [changes, discover]
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -75,16 +107,20 @@ jobs:
       - name: Compile ${{ matrix.device }}
         run: esphome compile "devices/${{ matrix.device }}.yaml"
 
-  # Single stable check that passes only if every device compiled. Useful as a
-  # required status check without depending on the matrix leg names.
+  # Required check. Always runs so it reports a status on every PR: passes
+  # trivially when no device files changed, otherwise reflects the compiles.
   validate-devices:
-    needs: [discover, compile]
+    needs: [changes, discover, compile]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Verify all device compiles passed
+      - name: Gate
         run: |
-          echo "discover: ${{ needs.discover.result }}, compile: ${{ needs.compile.result }}"
+          echo "relevant=${{ needs.changes.outputs.relevant }} compile=${{ needs.compile.result }}"
+          if [ "${{ needs.changes.outputs.relevant }}" != "true" ]; then
+            echo "No device-related changes — nothing to validate."
+            exit 0
+          fi
           if [ "${{ needs.compile.result }}" != "success" ]; then
             echo "One or more device configs failed to compile."
             exit 1
