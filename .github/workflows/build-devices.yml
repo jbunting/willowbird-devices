@@ -44,35 +44,37 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Building version $version"
 
-      - name: Compile device binaries
+      - name: Compile device binaries and manifests
         run: |
           mkdir -p dist
           for f in devices/*.yaml; do
             [ -e "$f" ] || continue
             name=$(basename "$f" .yaml)
             echo "::group::Building $name"
-            esphome -s version "$VERSION" -s auto_update true compile "$f"
-            bin=$(find devices/.esphome/build/$name/.pioenvs -name 'firmware.bin' | head -n1)
-            if [ -f "$bin" ]; then
-              cp "$bin" "dist/${name}.bin"
-              echo "✅ Built $name → dist/${name}.bin"
-            else
+
+            if ! esphome -s version "$VERSION" -s auto_update true compile "$f"; then
+              echo "❌ Compile failed for $name"
+              exit 1
+            fi
+
+            # ESPHome names the build directory after the internal `esphome: name:`,
+            # which may differ from the YAML filename (e.g.
+            # garage-door-controller.yaml -> garage-doors). Locate the firmware.bin
+            # we just built by mtime instead of guessing the path from the filename.
+            bin=$(find devices/.esphome/build -path '*/.pioenvs/*' -name 'firmware.bin' \
+                  -printf '%T@ %p\n' | sort -rn | head -n1 | cut -d' ' -f2-)
+            if [ -z "$bin" ] || [ ! -f "$bin" ]; then
               echo "❌ Failed to find binary for $name"
               exit 1
             fi
-            echo "::endgroup::"
-          done
-
-      - name: Generate manifests
-        run: |
-          for f in dist/*.bin; do
-            name=$(basename "$f" .bin)
-            manifest="dist/${name}-manifest.json"
+            cp "$bin" "dist/${name}.bin"
+            build_dir="${bin%/.pioenvs/*}"
+            echo "✅ Built $name → dist/${name}.bin (from $build_dir)"
 
             # chipFamily must equal the compiled ESPHOME_VARIANT (e.g. ESP32, ESP32-S3);
             # the OTA update component matches on `chipFamily == ESPHOME_VARIANT`.
             chip="ESP32"
-            defines="devices/.esphome/build/${name}/src/esphome/core/defines.h"
+            defines="$build_dir/src/esphome/core/defines.h"
             if [ -f "$defines" ]; then
               variant=$(grep -m1 'ESPHOME_VARIANT' "$defines" | sed -E 's/.*"([^"]+)".*/\1/')
               [ -n "$variant" ] && chip="$variant"
@@ -81,8 +83,8 @@ jobs:
             # Point OTA at the immutable versioned release asset so a frozen device
             # keeps pulling the exact build it was pinned to.
             url="https://github.com/${{ github.repository }}/releases/download/${VERSION}/${name}.bin"
-            md5=$(md5sum "$f" | cut -d' ' -f1)
-
+            md5=$(md5sum "dist/${name}.bin" | cut -d' ' -f1)
+            manifest="dist/${name}-manifest.json"
             {
               printf '{\n'
               printf '  "name": "%s",\n' "$name"
@@ -92,8 +94,6 @@ jobs:
               printf '  ]\n'
               printf '}\n'
             } > "$manifest"
-
-            echo "::group::$manifest"
             cat "$manifest"
             echo "::endgroup::"
           done
