@@ -1,5 +1,11 @@
 substitutions:
   friendly_name: ${name}
+esphome:
+  # Externalized firmware-status helpers (date math for "days behind"), kept in
+  # a real C++ header rather than an inline lambda. Path is resolved relative to
+  # the device config dir (devices/).
+  includes:
+    - common/firmware_status.h
 ota:
   - platform: esphome
   - platform: http_request
@@ -62,6 +68,24 @@ text_sensor:
       if (latest.empty())
         return {};
       return {latest};
+
+sensor:
+  - platform: template
+    name: Firmware Days Behind
+    id: firmware_days_behind
+    icon: mdi:calendar-clock
+    unit_of_measurement: d
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    # How far out of date this device is. Date math lives in the C++ helper
+    # (common/firmware_status.h); unknown for dev builds or before the first
+    # update check.
+    lambda: |-
+      auto behind = willowbird::days_behind(
+          "${version}", id(firmware_update).update_info.latest_version);
+      if (behind.has_value())
+        return (float) behind.value();
+      return {};
 
 binary_sensor:
   - platform: template
