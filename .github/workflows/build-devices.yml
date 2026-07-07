@@ -99,7 +99,7 @@ jobs:
           done
 
       - name: Publish versioned release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.version.outputs.version }}
           name: ${{ steps.version.outputs.version }}
@@ -110,7 +110,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update rolling latest release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: latest
           name: Latest Device Builds
