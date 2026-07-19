@@ -57,18 +57,23 @@ jobs:
               exit 1
             fi
 
-            # ESPHome names the build directory after the internal `esphome: name:`,
-            # which may differ from the YAML filename (e.g.
-            # garage-door-controller.yaml -> garage-doors). Locate the firmware.bin
-            # we just built by mtime instead of guessing the path from the filename.
-            bin=$(find devices/.esphome/build -path '*/.pioenvs/*' -name 'firmware.bin' \
-                  -printf '%T@ %p\n' | sort -rn | head -n1 | cut -d' ' -f2-)
+            # Locate the OTA image by mtime (the build dir is named after the
+            # internal `esphome: name:`, which may differ from the YAML filename,
+            # e.g. garage-door-controller.yaml -> garage-doors).
+            # esphome 2026.7.0+ (esp-idf/cmake) emits build/firmware.ota.bin;
+            # older PlatformIO builds used .pioenvs/<name>/firmware.bin.
+            bin=$(find devices/.esphome/build \
+                    \( -name 'firmware.ota.bin' -o -path '*/.pioenvs/*/firmware.bin' \) \
+                    -printf '%T@ %p\n' | sort -rn | head -n1 | cut -d' ' -f2-)
             if [ -z "$bin" ] || [ ! -f "$bin" ]; then
               echo "❌ Failed to find binary for $name"
               exit 1
             fi
             cp "$bin" "dist/${name}.bin"
-            build_dir="${bin%/.pioenvs/*}"
+            case "$bin" in
+              */build/firmware.ota.bin) build_dir="${bin%/build/firmware.ota.bin}" ;;
+              *) build_dir="${bin%/.pioenvs/*}" ;;
+            esac
             echo "✅ Built $name → dist/${name}.bin (from $build_dir)"
 
             # chipFamily must equal the compiled ESPHOME_VARIANT (e.g. ESP32, ESP32-S3);
