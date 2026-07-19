@@ -1,0 +1,548 @@
+substitutions:
+  name: "hot-tub"
+  friendly_name: "Hot Tub"
+
+packages:
+  willowbird-core: !include
+    file: common/core.yaml
+  willowbird-wifi: !include
+    file: common/wifi.yaml
+  willowbird-cicd: !include
+    file: common/cicd.yaml
+
+esphome:
+  comment: "Hot Springs Limelight Flash"
+
+esp32:
+  board: m5stack-atom
+  framework:
+    type: esp-idf
+
+# Enable logging
+logger:
+
+# Home Assistant API. Encryption is enabled with no baked-in key — the key is
+# set at runtime (secrets are never committed or shipped in a public release).
+api:
+  encryption:
+
+web_server:
+  port: 80
+  version: 3
+  ota: false
+  sorting_groups:
+    - id: overview
+      name: Overview
+      sorting_weight: 1
+    - id: chemicals
+      name: Chemicals
+      sorting_weight: 2
+    - id: jets
+      name: Jets
+      sorting_weight: 3
+    - id: lights
+      name: Lights
+      sorting_weight: 4
+    - id: maintenance
+      name: Maintenance
+      sorting_weight: 5
+    - id: energy
+      name: Energy
+      sorting_weight: 6
+    - id: diagnostic
+      name: Diagnostic
+      sorting_weight: 7
+
+external_components:
+  # ylianst/esp-iq2020 has no releases; pinned to a commit for reproducibility.
+  - source: github://ylianst/esp-iq2020@007607a1f0382d3606512067aac4048c57294536
+    components: [iq2020]
+
+# Make sure tx/rx pins are correct for your device.
+# GPIO26/32 is ok for M5Stack-ATOM + Tail485, look in GitHub devices link for your device.
+uart:
+  id: SpaConnection
+  tx_pin: GPIO26
+  rx_pin: GPIO32
+  baud_rate: 38400
+
+iq2020:
+  uart_id: SpaConnection
+  polling_rate: 65
+  port: 1234
+
+button:
+  - platform: template
+    name: All Off
+    id: all_off
+    web_server:
+      sorting_group_id: overview
+      sorting_weight: 2
+    on_press:
+      then:
+        - fan.turn_off: jets1
+        - fan.turn_off: jets2
+        - switch.turn_off: lights_switch
+  - platform: template
+    name: Jets Off
+    id: jets_off
+    web_server:
+      sorting_group_id: jets
+      sorting_weight: 2
+    on_press:
+      then:
+        - fan.turn_off: jets1
+        - fan.turn_off: jets2
+  - platform: template
+    name: Jets Max
+    id: jets_max
+    web_server:
+      sorting_group_id: jets
+      sorting_weight: 3
+    on_press:
+      then:
+        - fan.turn_on: jets1
+        - lambda: |-
+            auto call = id(jets1).turn_on();
+            call.set_speed(2);
+            call.perform();
+        - fan.turn_on: jets2
+
+binary_sensor:
+  - platform: template
+    name: Jets
+    id: jets_any
+    web_server:
+      sorting_group_id: jets
+      sorting_weight: 1
+    lambda: |-
+      return id(jets1).state || id(jets2).state;
+  - platform: template
+    name: In Use
+    id: in_use
+    web_server:
+      sorting_group_id: overview
+      sorting_weight: 1
+    lambda: |-
+      return id(lights_switch).state || (!id(clean_cycle_switch).state && id(jets_any).state);
+  - platform: template
+    name: Current Chlorine OK
+    id: chlorine_ok
+    web_server:
+      sorting_group_id: chemicals
+    lambda: |-
+      float current = id(current_chlorine).state;
+      float min = id(chlorine_min).state;
+      float max = id(chlorine_max).state;
+      return current >= min && current <= max;
+  - platform: template
+    name: Current pH OK
+    id: ph_ok
+    web_server:
+      sorting_group_id: chemicals
+    lambda: |-
+      float current = id(current_ph).state;
+      float min = id(ph_min).state;
+      float max = id(ph_max).state;
+      return current >= min && current <= max;
+  - platform: template
+    name: Current Salt OK
+    id: salt_ok
+    web_server:
+      sorting_group_id: chemicals
+    lambda: |-
+      float current = id(current_salt).state;
+      float min = id(salt_min).state;
+      float max = id(salt_max).state;
+      return current >= min && current <= max;
+  - platform: template
+    name: Current Chemicals OK
+    id: chemicals_ok
+    web_server:
+      sorting_group_id: chemicals
+      sorting_weight: 1
+    condition:
+      - binary_sensor.is_on: chlorine_ok
+      - binary_sensor.is_on: ph_ok
+      - binary_sensor.is_on: salt_ok
+
+select:
+  - platform: iq2020
+    name: Lights Underwater Color
+    id: lights1_color
+    web_server:
+      sorting_group_id: lights
+    datapoint: 1
+    options:
+      - Violet
+      - Blue
+      - Cyan
+      - Green
+      - White
+      - Yellow
+      - Red
+      - Cycle
+  - platform: iq2020
+    name: Lights Exterior Color
+    id: lights4_color
+    web_server:
+      sorting_group_id: lights
+    datapoint: 4
+    options:
+      - Violet
+      - Blue
+      - Cyan
+      - Green
+      - White
+      - Yellow
+      - Red
+      - Cycle
+  - platform: iq2020
+    name: Lights Color Cycle Speed
+    id: lights_cycle_speed
+    web_server:
+      sorting_group_id: lights
+    datapoint: 5
+
+number:
+  - platform: iq2020
+    id: salt_power
+    name: Chlorinator Power
+    datapoint: 5
+    web_server:
+      sorting_group_id: chemicals
+  - platform: iq2020
+    id: lights1_intensity
+    name: Lights Underwater Intensity
+    datapoint: 7
+    web_server:
+      sorting_group_id: lights
+    maximum: 5
+  - platform: iq2020
+    id: lights4_intensity
+    name: Lights Exterior Intensity
+    datapoint: 10
+    web_server:
+      sorting_group_id: lights
+    maximum: 5
+  - platform: template
+    id: chlorine_min
+    name: Chlorine Ideal Min
+    web_server:
+      sorting_group_id: chemicals
+    entity_category: config
+    unit_of_measurement: ppm
+    optimistic: True
+    mode: BOX
+    min_value: 0
+    max_value: 20
+    step: 0.5
+    initial_value: 1.0
+    restore_value: true
+  - platform: template
+    id: chlorine_max
+    name: Chlorine Ideal Max
+    web_server:
+      sorting_group_id: chemicals
+    entity_category: config
+    unit_of_measurement: ppm
+    optimistic: True
+    mode: BOX
+    min_value: 0
+    max_value: 20
+    step: 0.5
+    initial_value: 5.0
+    restore_value: true
+  - platform: template
+    id: chlorine_target_min
+    name: Chlorine Target Min
+    web_server:
+      sorting_group_id: chemicals
+    entity_category: config
+    unit_of_measurement: ppm
+    optimistic: True
+    mode: BOX
+    min_value: 0
+    max_value: 20
+    step: 0.1
+    initial_value: 2.5
+    restore_value: true
+  - platform: template
+    id: chlorine_target_max
+    name: Chlorine Target Max
+    web_server:
+      sorting_group_id: chemicals
+    entity_category: config
+    unit_of_measurement: ppm
+    optimistic: True
+    mode: BOX
+    min_value: 0
+    max_value: 20
+    step: 0.5
+    initial_value: 3.5
+    restore_value: true
+  - platform: template
+    id: ph_min
+    name: pH Ideal Min
+    web_server:
+      sorting_group_id: chemicals
+    entity_category: config
+    unit_of_measurement: ""
+    optimistic: True
+    mode: BOX
+    min_value: 0
+    max_value: 14
+    step: 0.1
+    initial_value: 7.2
+    restore_value: true
+  - platform: template
+    id: ph_max
+    name: pH Ideal Max
+    web_server:
+      sorting_group_id: chemicals
+    entity_category: config
+    unit_of_measurement: ""
+    optimistic: True
+    mode: BOX
+    min_value: 0
+    max_value: 14
+    step: 0.1
+    initial_value: 7.8
+    restore_value: true
+  - platform: template
+    id: salt_min
+    name: Salt Ideal Min
+    web_server:
+      sorting_group_id: chemicals
+    entity_category: config
+    unit_of_measurement: ppm
+    optimistic: True
+    mode: BOX
+    min_value: 0
+    max_value: 5000
+    step: 100
+    initial_value: 1600
+    restore_value: true
+  - platform: template
+    id: salt_max
+    name: Salt Ideal Max
+    web_server:
+      sorting_group_id: chemicals
+    entity_category: config
+    unit_of_measurement: ppm
+    optimistic: True
+    mode: BOX
+    min_value: 0
+    max_value: 5000
+    step: 100
+    initial_value: 2200
+    restore_value: true
+
+# If using celsius units on the hot tub remote, replace _f_ with _c_ in the
+# temperature sensors below. Remove any sensors not relevant for your hot tub.
+sensor:
+  - platform: wifi_signal # Reports the WiFi signal strength/RSSI in dB
+    name: "WiFi Signal dB"
+    id: wifi_signal_db
+    update_interval: 60s
+    entity_category: "diagnostic"
+  - platform: copy # Reports the WiFi signal strength in %
+    source_id: wifi_signal_db
+    name: "WiFi Signal Percent"
+    filters:
+      - lambda: return min(max(2 * (x + 100.0), 0.0), 100.0);
+    unit_of_measurement: "Signal %"
+    entity_category: "diagnostic"
+    device_class: ""
+  - platform: iq2020
+    salt_content:
+      name: Salt Content
+    outlet_f_temperature:
+      name: Heater Outlet
+    heater_total_runtime:
+      name: Heater Runtime
+      entity_category: "diagnostic"
+    jets1_total_runtime:
+      name: Jets 1 Runtime
+      entity_category: "diagnostic"
+    lifetime_runtime:
+      name: Lifetime Runtime
+      entity_category: "diagnostic"
+    jets2_total_runtime:
+      name: Jets 2 Runtime
+      entity_category: "diagnostic"
+    lights_total_runtime:
+      name: Lights Runtime
+      entity_category: "diagnostic"
+    circulation_pump_total_runtime:
+      name: Circulation Pump Runtime
+      entity_category: "diagnostic"
+    jet1_low_total_runtime:
+      name: Jets 1 Low Runtime
+      entity_category: "diagnostic"
+    power_on_counter:
+      name: Power On Counter
+      entity_category: "diagnostic"
+    pcb_f_temperature:
+      name: Controller Temperature
+      entity_category: "diagnostic"
+    iq_vc:
+      name: Current Salt
+      id: current_salt
+      web_server:
+        sorting_group_id: chemicals
+    iq_chlorine:
+      name: Current Chlorine
+      id: current_chlorine
+      web_server:
+        sorting_group_id: chemicals
+    iq_ph:
+      name: Current pH
+      id: current_ph
+      web_server:
+        sorting_group_id: chemicals
+    iq_hoursleft:
+      name: IQ Hours Left
+      web_server:
+        sorting_group_id: maintenance
+    power_l1:
+      name: Jets Power
+      id: power_jets
+    power_heater:
+      name: Circulation Pump Power
+      id: power_circ_pump
+    power_l2:
+      name: Heater Power
+      id: power_heater
+  - platform: total_daily_energy
+    id: energy_jets_daily
+    name: Jets Daily Energy
+    web_server:
+      sorting_group_id: energy
+    power_id: power_jets
+    time_id: homeassistant_time
+  - platform: total_daily_energy
+    id: energy_circ_pump_daily
+    name: Circulation Pump Energy
+    web_server:
+      sorting_group_id: energy
+    power_id: power_circ_pump
+    time_id: homeassistant_time
+  - platform: total_daily_energy
+    id: energy_heater_daily
+    name: Heater Daily Energy
+    web_server:
+      sorting_group_id: energy
+    power_id: power_heater
+    time_id: homeassistant_time
+
+time:
+  - platform: homeassistant
+    id: homeassistant_time
+
+switch:
+  - platform: iq2020
+    name: Lights
+    id: lights_switch
+    icon: "mdi:lightbulb"
+    datapoint: 0
+    web_server:
+      sorting_group_id: lights
+  - platform: iq2020
+    name: Spa Lock
+    id: spa_lock_switch
+    icon: "mdi:lock"
+    datapoint: 1
+    web_server:
+      sorting_group_id: maintenance
+  - platform: iq2020
+    name: Temperature Lock
+    id: temp_lock_switch
+    icon: "mdi:lock"
+    datapoint: 2
+    web_server:
+      sorting_group_id: maintenance
+  - platform: iq2020
+    name: Clean Cycle
+    id: clean_cycle_switch
+    icon: "mdi:vacuum"
+    datapoint: 3
+    web_server:
+      sorting_group_id: overview
+  - platform: iq2020
+    name: Summer Timer
+    id: summer_timer_switch
+    icon: "mdi:sun-clock"
+    datapoint: 4
+    web_server:
+      sorting_group_id: maintenance
+  - platform: iq2020
+    name: Salt Boost
+    id: salt_system_boost
+    datapoint: 8
+    web_server:
+      sorting_group_id: chemicals
+
+fan:
+  - platform: iq2020
+    name: Jets 1
+    id: jets1
+    icon: "mdi:turbine"
+    datapoint: 0
+    speeds: 2
+    web_server:
+      sorting_group_id: jets
+  - platform: iq2020
+    name: Jets 2
+    id: jets2
+    icon: "mdi:turbine"
+    datapoint: 1
+    web_server:
+      sorting_group_id: jets
+    speeds: 1
+
+# Set "celsius" to "true" if using celsius units.
+climate:
+  - platform: iq2020
+    name: Temperature
+    celsius: false
+    web_server:
+      sorting_group_id: overview
+
+text_sensor:
+  - platform: iq2020
+    versionstr:
+      name: Version
+  - platform: template
+    id: logo_lights_text
+    name: Logo Lights
+    filters:
+      - map:
+          - 0 -> Unknown
+          - 1 -> Power on
+          - 2 -> Power on & ready on
+          - 3 -> Ready flash
+          - 4 -> Power flash
+          - 5 -> Power and ready flash
+          - 6 -> Power and ready alternate
+          - 7 -> Power and ready salt error
+  - platform: template
+    id: chlorine_status
+    name: Chlorine Status
+    lambda: !lambda |-
+      float current = id(current_chlorine).state;
+      float min = id(chlorine_min).state;
+      float max = id(chlorine_max).state;
+      float target_min = id(chlorine_target_min).state;
+      float target_max = id(chlorine_target_max).state;
+      if(current < min) {
+        return {"VERY LOW"};
+      } else if (current < target_min) {
+        return {"LOW"};
+      } else if (current > max) {
+        return {"VERY HIGH"};
+      } else if (current > target_max) {
+        return {"HIGH"};
+      } else {
+        return {"OK"};
+      }
