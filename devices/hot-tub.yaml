@@ -54,8 +54,10 @@ web_server:
       sorting_weight: 7
 
 external_components:
-  # ylianst/esp-iq2020 has no releases; pinned to a commit for reproducibility.
-  - source: github://ylianst/esp-iq2020@007607a1f0382d3606512067aac4048c57294536
+  # Temporary fork carrying the esphome 2026.7.0 fix (get_use_address_to) until
+  # the upstream PR lands: https://github.com/Ylianst/ESP-IQ2020/pull/111
+  # Revert to github://ylianst/esp-iq2020@<ref> once merged.
+  - source: github://jbunting/ESP-IQ2020@e9c441f27e9b06d9cf397b3cabb4f43f70c54750
     components: [iq2020]
 
 # Make sure tx/rx pins are correct for your device.
