@@ -2,8 +2,12 @@
 name: Build and Release ESPHome Devices
 
 on:
-  push:
-    branches: [ main ]
+  # Rebase/squash merges done via the API don't emit a `push` event, so a plain
+  # `on: push` silently misses PR merges (which is how a hot-tub release got
+  # skipped). Trigger on the PR closing instead — that fires for every merge
+  # method — and gate on `merged` below. workflow_dispatch covers manual runs.
+  pull_request:
+    types: [closed]
     paths:
       - 'devices/**'
       - 'components/**'
@@ -15,8 +19,16 @@ on:
 permissions:
   contents: write   # needed for releases
 
+# Serialize releases so two merges close together don't race on the `latest`
+# release. Don't cancel an in-flight release mid-upload.
+concurrency:
+  group: build-devices
+  cancel-in-progress: false
+
 jobs:
   build-devices:
+    # Build for a merged PR (not a closed-without-merge one) or a manual run.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
 
     steps:
@@ -24,6 +36,8 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          # Build the merged result on main, not the PR's ephemeral merge ref.
+          ref: main
 
       - name: Set up Python
         uses: actions/setup-python@v6
