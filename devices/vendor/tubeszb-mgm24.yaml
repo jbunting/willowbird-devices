@@ -45,7 +45,7 @@ esphome:
     - priority: 150   # restore user-selected baud after core init/reset sequence
       then:
         - lambda: |-
-            const auto &saved = id(change_baud_rate).state;
+            const auto &saved = id(change_baud_rate).current_option();
             if (saved.empty()) {
               ESP_LOGD("apply_uart_baud", "No saved baud rate; skipping restore");
               return;
@@ -53,7 +53,7 @@ esphome:
             ESP_LOGD("apply_uart_baud", "Restoring baud rate from saved state: %s", saved.c_str());
         - script.execute:
             id: apply_uart_baud
-            baud_str: !lambda 'return id(change_baud_rate).state;'
+            baud_str: !lambda 'return id(change_baud_rate).current_option();'
     - priority: 140   # apply custom firmware URL override (if set)
       then:
         - script.execute:
@@ -77,7 +77,8 @@ esp32:
       CONFIG_UART_ISR_IN_IRAM: "y"
 
 external_components:
-  - source: github://tube0013/esphome-components@85dda63c7913b2f33a32b81f0156f5a46c82166f
+  # Bumped to pick up the esphome 2026.7.0 fix (get_use_address_to) for stream_server.
+  - source: github://tube0013/esphome-components@9c64319422abf7aa297201e2c54ffd9fe7c2fb39
     components: [stream_server, efr32_flasher, efr32_info]
     refresh: 1d
 
