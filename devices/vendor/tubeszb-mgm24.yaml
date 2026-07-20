@@ -115,9 +115,11 @@ ethernet:
     then:
       - logger.log: "Ethernet Link Detected. Waiting for IP assignment..."
       - wait_until:
-          lambda: |-
-            auto addresses = id(ethernet0).get_ip_addresses();
-            return !addresses.empty() && addresses[0].is_set();
+          condition:
+            lambda: |-
+              auto addresses = id(ethernet0).get_ip_addresses();
+              return !addresses.empty() && addresses[0].is_set();
+          timeout: 30s
       - logger.log: "IP Assigned. Starting connectivity check..."
       - script.execute: check_connectivity
 
