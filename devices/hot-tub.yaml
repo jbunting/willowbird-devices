@@ -109,8 +109,29 @@ button:
             call.set_speed(2);
             call.perform();
         - fan.turn_on: jets2
+  # Freshwater salt maintenance actions (datapoint maps to the controller command).
+  - platform: iq2020
+    name: Salt Test
+    datapoint: 0
+    web_server:
+      sorting_group_id: maintenance
+  - platform: iq2020
+    name: Reset Salt Cartridge
+    datapoint: 1
+    web_server:
+      sorting_group_id: maintenance
+  - platform: iq2020
+    name: Confirm Salt Level
+    datapoint: 2
+    web_server:
+      sorting_group_id: maintenance
 
 binary_sensor:
+  - platform: iq2020
+    salt_level_confirmed:
+      name: Salt Level Confirmed
+      web_server:
+        sorting_group_id: chemicals
   - platform: template
     name: Jets
     id: jets_any
@@ -416,6 +437,36 @@ sensor:
     power_l2:
       name: Heater Power
       id: power_heater
+    # Standalone water temps (also surfaced on the climate entity).
+    current_f_temperature:
+      name: Water Temperature
+      web_server:
+        sorting_group_id: overview
+    target_f_temperature:
+      name: Target Temperature
+      web_server:
+        sorting_group_id: overview
+    # Freshwater salt cartridge diagnostics.
+    salt_error_code:
+      name: Salt Error Code
+      web_server:
+        sorting_group_id: maintenance
+    salt_cartridge_age_days:
+      name: Salt Cartridge Age
+      web_server:
+        sorting_group_id: maintenance
+    salt_days_since_manual_test:
+      name: Salt Days Since Test
+      web_server:
+        sorting_group_id: maintenance
+    salt_generation_hours:
+      name: Salt Generation Hours
+      web_server:
+        sorting_group_id: maintenance
+    # Controller battery-backed real-time clock.
+    rtc_timestamp:
+      name: Controller Clock (epoch)
+      entity_category: "diagnostic"
   - platform: total_daily_energy
     id: energy_jets_daily
     name: Jets Daily Energy
@@ -515,6 +566,17 @@ text_sensor:
   - platform: iq2020
     versionstr:
       name: Version
+    salt_module_status:
+      name: Salt Module Status
+      web_server:
+        sorting_group_id: chemicals
+    salt_level_friendly:
+      name: Salt Level
+      web_server:
+        sorting_group_id: chemicals
+    rtc_datetime:
+      name: Controller Clock
+      entity_category: "diagnostic"
   - platform: template
     id: logo_lights_text
     name: Logo Lights
