@@ -1,0 +1,82 @@
+name: vendored-resync-claude
+
+# When Renovate opens a PR that bumps a vendored file's `# vendored-from:` digest,
+# re-vendor the file(s) whose upstream *actually* changed, using Claude.
+#   Renovate = the signal (opens the PR);  Claude = does the re-vendor;
+#   the separate `vendored-resync` check gates the merge.
+#
+# Loop-safety: the detect step only lists files that still need a re-vendor
+# (upstream changed AND our body not yet updated). Once Claude updates the body
+# and pushes, the next run's detect step finds nothing, so Claude does not re-run.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+concurrency:
+  group: vendored-resync-claude-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  revendor:
+    # Only Renovate's vendored-from PRs, and only from this repo (forks get no secrets anyway).
+    if: >-
+      contains(github.event.pull_request.labels.*.name, 'vendored-resync') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - name: Which vendored files still need a re-vendor?
+        id: detect
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MODE: list
+        run: python3 scripts/check_vendored_resync.py
+
+      - name: Re-vendor with Claude
+        if: steps.detect.outputs.files != ''
+        uses: anthropics/claude-code-action@v1
+        with:
+          # Claude API auth (subscription). The action commits + pushes itself.
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Push with a PAT (not GITHUB_TOKEN) so the re-vendor commit RE-TRIGGERS
+          # the required `vendored-resync` gate on the new head commit.
+          github_token: ${{ secrets.REVENDOR_PAT }}
+          claude_args: |
+            --allowedTools Bash,Read,Edit,Write
+            --max-turns 40
+          prompt: |
+            Re-sync vendored ESPHome config files that have fallen behind upstream.
+
+            Files to re-sync (space-separated): ${{ steps.detect.outputs.files }}
+            Our previous state is the PR base commit: ${{ github.event.pull_request.base.sha }}
+
+            Each listed file is a vendored *copy* of an upstream file. Its header comment documents:
+              - the upstream source, e.g.  `#   github://<owner>/<repo>/<path>`
+              - the pinned commit, e.g.    `# vendored-from: main @<NEW_SHA>`  (Renovate just bumped this to the new sha)
+              - a "Local adaptations vs upstream" list — the changes we intentionally make.
+
+            For EACH file listed above:
+              1. Read the file and its header. Note <owner>/<repo>/<path>, the NEW sha from `# vendored-from:`, and the adaptations list.
+              2. Get the OLD sha: run `git show ${{ github.event.pull_request.base.sha }}:<file>` — that's our file before this PR; its `# vendored-from:` line holds the OLD sha.
+              3. Fetch upstream at both shas:
+                   curl -fsSL https://raw.githubusercontent.com/<owner>/<repo>/<OLD_SHA>/<path>
+                   curl -fsSL https://raw.githubusercontent.com/<owner>/<repo>/<NEW_SHA>/<path>
+              4. Diff old-upstream vs new-upstream to see exactly what upstream changed.
+              5. Apply ONLY those upstream changes to our vendored file, PRESERVING every local adaptation in the header. Do NOT re-introduce anything we strip (name/project, ota/http_request, manual_ip, custom web UI js) and KEEP our deviations (pinned external_components, current_option() usages, inlined logic, etc.).
+              6. Keep the header intact, including the already-bumped `# vendored-from:` NEW sha.
+              7. If an upstream change collides with something we deliberately adapted, prefer our adaptation and call out the conflict.
+
+            Commit the edits to this PR branch. In your final message, summarize per file what upstream changed and how you ported it, and flag anything a human must double-check.
