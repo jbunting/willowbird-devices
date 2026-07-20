@@ -12,11 +12,12 @@
       "groupName": "esphome"
     },
     {
-      "description": "Vendored-from tracking. Renovate opens a normal PR bumping the digest (visible), but the vendored-resync CI check fails if upstream actually changed a vendored file and it wasn't re-synced in the PR — so a digest-only bump can't be merged blindly. Trivial bumps (upstream file unchanged) pass and are safe to merge.",
+      "description": "Vendored-from tracking. Renovate opens a PR bumping the digest (the signal); the vendored-resync-claude workflow re-vendors the file with Claude if upstream actually changed it, and the vendored-resync check gates the merge. rebaseWhen=never so Renovate doesn't clobber Claude's re-vendor commits on the branch.",
       "matchDepNames": ["tube0013/TubesZB-ESPHome-Builder"],
       "addLabels": ["vendored-resync"],
+      "rebaseWhen": "never",
       "prBodyNotes": [
-        "⚠️ This PR only advances the `# vendored-from:` digest. If the **vendored-resync** check fails, upstream changed a vendored file — check out this branch, re-copy the upstream file and re-apply our local adaptations (see the file's header), commit, then merge. If the check passes, upstream did not touch our vendored files and this is safe to merge as-is."
+        "⚠️ Renovate only bumped the `# vendored-from:` digest. If upstream changed a vendored file, the **vendored-resync-claude** workflow re-vendors it onto this branch automatically — review Claude's changes before merging. If upstream did not touch our files, this is just a digest bump and is safe to merge as-is."
       ]
     }
   ],

@@ -137,6 +137,17 @@ def main():
         if status == "fail":
             failures.append(f)
 
+    # MODE=list: report the files needing a re-vendor (for the Claude workflow to
+    # act on) and always exit 0 — it's a query, not the merge gate.
+    if os.environ.get("MODE") == "list":
+        gh_out = os.environ.get("GITHUB_OUTPUT")
+        if gh_out:
+            with open(gh_out, "a") as fh:
+                fh.write(f"files={' '.join(failures)}\n")
+        print(f"files needing re-vendor: {' '.join(failures) or '(none)'}")
+        return
+
+    # Default (gate) mode: this is the required merge check.
     if failures:
         print(f"\nvendored-resync FAILED — re-sync needed for: {', '.join(failures)}")
         sys.exit(1)
