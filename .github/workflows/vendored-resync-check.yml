@@ -3,10 +3,12 @@ name: vendored-resync
 # Fails a PR that bumps a vendored file's `# vendored-from:` digest without
 # actually re-syncing the file when upstream changed it. Digest-only bumps for
 # unchanged upstream files pass. See scripts/check_vendored_resync.py.
+#
+# Runs on EVERY PR (no paths filter) on purpose: so it can be a required status
+# check without blocking PRs that don't touch devices/vendor/. The script
+# no-ops to success when no vendored file changed, so it always reports a status.
 on:
   pull_request:
-    paths:
-      - "devices/vendor/**"
 
 jobs:
   vendored-resync:
