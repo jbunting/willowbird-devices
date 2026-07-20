@@ -1,0 +1,24 @@
+name: vendored-resync
+
+# Fails a PR that bumps a vendored file's `# vendored-from:` digest without
+# actually re-syncing the file when upstream changed it. Digest-only bumps for
+# unchanged upstream files pass. See scripts/check_vendored_resync.py.
+on:
+  pull_request:
+    paths:
+      - "devices/vendor/**"
+
+jobs:
+  vendored-resync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+      - name: Check vendored files are re-synced when upstream changed
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python3 scripts/check_vendored_resync.py
