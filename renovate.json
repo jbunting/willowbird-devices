@@ -10,6 +10,11 @@
       "description": "Group all ESPHome updates together",
       "matchPackageNames": ["esphome", "esphome/esphome"],
       "groupName": "esphome"
+    },
+    {
+      "description": "Vendored-from tracking is a re-sync nudge, not an auto-update. Surface it on the dependency dashboard instead of opening a PR every time TubesZB's main branch moves.",
+      "matchDepNames": ["tube0013/TubesZB-ESPHome-Builder"],
+      "dependencyDashboardApproval": true
     }
   ],
   "customManagers": [
@@ -25,13 +30,26 @@
     },
     {
       "customType": "regex",
-      "description": "ESPHome github:// package includes pinned with @version and a renovate comment",
+      "description": "ESPHome github:// package includes pinned with @version and a renovate comment. Version tags only; commit-SHA pins are handled by the git-refs manager below (the currentValue pattern requires a non-hex char so a 40-char SHA does not match here).",
       "managerFilePatterns": [
         "/(^|/)(devices|prototypes|examples)/.+\\.ya?ml$/"
       ],
       "matchStrings": [
-        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( versioning=(?<versioning>\\S+))?\\s*\\n\\s*[^\\n]*github://[^@\\s\"]+@(?<currentValue>[^\\s\"]+)"
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( versioning=(?<versioning>\\S+))?\\s*\\n\\s*[^\\n]*github://[^@\\s\"]+@(?<currentValue>[^\\s\"]*[^0-9a-fA-F\\s\"][^\\s\"]*)"
       ]
+    },
+    {
+      "customType": "regex",
+      "description": "Track a GitHub repo's main-branch commit digest via git-refs. Used for esphome external_components pinned to a commit SHA (repos with no releases/tags) and for vendored-from source tracking. A move on main produces a digest-bump PR (or a dependency-dashboard entry) signalling a re-check / re-sync.",
+      "managerFilePatterns": [
+        "/(^|/)(devices|prototypes|examples)/.+\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=git-refs depName=(?<depName>\\S+)\\s*\\n[^\\n]*@(?<currentDigest>[0-9a-fA-F]{7,40})"
+      ],
+      "datasourceTemplate": "git-refs",
+      "packageNameTemplate": "https://github.com/{{{depName}}}",
+      "currentValueTemplate": "main"
     }
   ]
 }
