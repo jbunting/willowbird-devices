@@ -1,10 +1,11 @@
 external_components:
   - source:
       type: git
-      url: https://github.com/ratgdo/esphome-ratgdo
-      # renovate: datasource=github-releases depName=ratgdo/esphome-ratgdo versioning=loose
-      ref: v1510
-    refresh: 1s
+      url: https://github.com/jbunting/esphome-gdo
+      # renovate: datasource=github-releases depName=jbunting/esphome-gdo
+      ref: 2026.7.0
+    components: [secplus_gdo]
+    refresh: 1d
 
 esphome:
   name: garage-doors
@@ -22,8 +23,11 @@ text_sensor:
   - platform: version
     name: "Firmware Version"
 
-# Enable logging
+# Console on USB-Serial-JTAG frees all three hardware UARTs (0/1/2) for the
+# openers below, while keeping logs + improv_serial provisioning over USB.
+# Connect to the S3 devkit's native USB port (not the UART bridge port).
 logger:
+  hardware_uart: USB_SERIAL_JTAG
 
 web_server:
   port: 80
@@ -67,45 +71,59 @@ button:
     name: "Garage Door Restart"
     id: restart_button
 
+# --- Security+ garage door openers (jbunting/esphome-gdo) ---
+#
+# Three openers, one per hardware UART (0/1/2). gdolib remaps each UART to the
+# tx/rx pins below via the GPIO matrix.
+#
+# ⚠️ PLACEHOLDER PINS — set tx_pin/rx_pin to match your actual wiring before
+# flashing. Avoid GPIO10 (warning LED), GPIO19/20 (USB), and the flash/PSRAM
+# pins. invert_uart is standard for the Security+ signal.
+secplus_gdo:
+  - id: gdo_jeep
+    uart_num: 0
+    tx_pin: GPIO4
+    rx_pin: GPIO5
+    invert_uart: true
+  - id: gdo_van
+    uart_num: 1
+    tx_pin: GPIO6
+    rx_pin: GPIO7
+    invert_uart: true
+  - id: gdo_toy
+    uart_num: 2
+    tx_pin: GPIO15
+    rx_pin: GPIO16
+    invert_uart: true
+
+cover:
+  - platform: secplus_gdo
+    secplus_gdo_id: gdo_jeep
+    name: Jeep
+    device_class: garage
+  - platform: secplus_gdo
+    secplus_gdo_id: gdo_van
+    name: Van
+    device_class: garage
+  - platform: secplus_gdo
+    secplus_gdo_id: gdo_toy
+    name: Toy
+    device_class: garage
+
 light:
+  # Warning indicator (not tied to a door).
   - id: warning_led
     platform: binary
     output: warning_led_output
     effects:
       - strobe:
     internal: true
-
-ratgdo:
-    id: gdo_toy
-    input_gdo_pin: GPIO21
-    output_gdo_pin: GPIO16
-    input_obst_pin: none
-
-binary_sensor:
-  - platform: gpio
-    pin: GPIO15
-    id: temp
-
-# packages:
-  # jeep_garage_door: !include
-  #   file: common/garage-door.yaml
-  #   vars: 
-  #     id: jeep
-  #     name: Jeep
-  #     output_pin: GPIO36
-  #     input_pin: GPIO37
-  # van_garage_door: !include
-  #   file: common/ratgdo-door.yaml
-  #   vars: 
-  #     id: van
-  #     name: Van
-  #     output_pin: GPIO1
-  #     input_pin: GPIO2
-  # toy_garage_door: !include
-  #   file: common/ratgdo-door.yaml
-  #   vars: 
-  #     id: toy
-  #     name: Toy
-  #     output_pin: GPIO16
-  #     input_pin: GPIO21
-
+  - platform: secplus_gdo
+    secplus_gdo_id: gdo_jeep
+    name: Jeep Light
+  - platform: secplus_gdo
+    secplus_gdo_id: gdo_van
+    name: Van Light
+  - platform: secplus_gdo
+    secplus_gdo_id: gdo_toy
+    name: Toy Light
