@@ -22,14 +22,15 @@ update:
       then:
         # Auto-install only when it's a mainline build (auto_update=true) AND the
         # user hasn't frozen this device. Dev/frozen devices still report the
-        # available update below; they just don't flash themselves.
+        # available update below; they just don't flash themselves. Use the
+        # "Update to Latest" button to pull on demand (e.g. on a dev device).
         - if:
             condition:
               lambda: "return ${auto_update} && !id(freeze_version).state;"
             then:
               - update.perform:
 
-# --- Firmware status (#8) + freeze switch (#9) ---
+# --- Firmware status (#8) + freeze switch (#9) + manual update ---
 
 switch:
   - platform: template
@@ -40,6 +41,19 @@ switch:
     optimistic: true
     # Persist the freeze choice across reboots/OTA.
     restore_mode: RESTORE_DEFAULT_OFF
+
+button:
+  - platform: template
+    name: Update to Latest
+    id: update_to_latest
+    icon: mdi:cloud-download
+    entity_category: config
+    # Pull the latest release now, regardless of freeze/build channel. Lets a
+    # dev or frozen device update on demand — it lands on the mainline build and
+    # auto-updates from there. No-op if already up to date.
+    on_press:
+      - update.perform:
+          id: firmware_update
 
 text_sensor:
   - platform: template
