@@ -17,7 +17,7 @@
 #   - manual_ip placeholders removed (use DHCP)
 #   - custom web UI js (../www3TZB.js) dropped; default web_server v3 UI is used
 #   - external_components pinned to a commit (tube0013/esphome-components has no
-#     releases); bump manually if upstream ships fixes.
+#     releases); Renovate tracks the main-branch digest via the annotation below.
 
 esphome:
   min_version: 2026.3.2
