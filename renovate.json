@@ -12,9 +12,12 @@
       "groupName": "esphome"
     },
     {
-      "description": "Vendored-from tracking is a re-sync nudge, not an auto-update. Surface it on the dependency dashboard instead of opening a PR every time TubesZB's main branch moves.",
+      "description": "Vendored-from tracking. Renovate opens a normal PR bumping the digest (visible), but the vendored-resync CI check fails if upstream actually changed a vendored file and it wasn't re-synced in the PR — so a digest-only bump can't be merged blindly. Trivial bumps (upstream file unchanged) pass and are safe to merge.",
       "matchDepNames": ["tube0013/TubesZB-ESPHome-Builder"],
-      "dependencyDashboardApproval": true
+      "addLabels": ["vendored-resync"],
+      "prBodyNotes": [
+        "⚠️ This PR only advances the `# vendored-from:` digest. If the **vendored-resync** check fails, upstream changed a vendored file — check out this branch, re-copy the upstream file and re-apply our local adaptations (see the file's header), commit, then merge. If the check passes, upstream did not touch our vendored files and this is safe to merge as-is."
+      ]
     }
   ],
   "customManagers": [
