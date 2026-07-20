@@ -9,3 +9,46 @@ packages:
     file: common/cicd.yaml
 api:
 
+# Web UI. The shared cicd package already provides the v3 web_server and the
+# "Firmware" section; add this device's own Device Information / Controls groups
+# and populate them. (The olimex package brings the bluetooth proxy plus Safe
+# Mode / Factory reset buttons, but no device-info sensors or a restart button.)
+web_server:
+  sorting_groups:
+    - id: info_group
+      name: "Device Information"
+      sorting_weight: 10
+    - id: device_control_group
+      name: "Device Controls"
+      sorting_weight: 20
+
+text_sensor:
+  - platform: ethernet_info
+    ip_address:
+      name: "IP Address"
+      icon: mdi:ip-network-outline
+      web_server:
+        sorting_group_id: info_group
+        sorting_weight: 10
+    mac_address:
+      name: "MAC Address"
+      icon: mdi:network-outline
+      web_server:
+        sorting_group_id: info_group
+        sorting_weight: 20
+
+sensor:
+  - platform: uptime
+    name: "Uptime"
+    icon: mdi:timer-outline
+    web_server:
+      sorting_group_id: info_group
+      sorting_weight: 30
+
+button:
+  - platform: restart
+    name: "Restart"
+    icon: mdi:restart
+    web_server:
+      sorting_group_id: device_control_group
+      sorting_weight: 10
