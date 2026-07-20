@@ -1,15 +1,11 @@
-# Vendored + adapted from TubesZB's maintained MGM24 config:
+# Vendored (copied) from TubesZB's maintained MGM24 (Zigbee) config so we can
+# adapt it: a remote package include can't strip/override the pieces listed below.
 #   github://tube0013/TubesZB-ESPHome-Builder/esphome-config/tubeszb-efr32-mgm24-2023.yaml
 #
-# Renovate nudges (dependency dashboard) when upstream main moves past this point,
-# so we can re-diff and re-sync. Bump the digest below after re-vendoring.
 # renovate: datasource=git-refs depName=tube0013/TubesZB-ESPHome-Builder
 # vendored-from: main @9b538c3afbc10b3bec6bd0e5bfb4e09caab12818
-#
-# Why vendored: the old tube_gateways package pulled a custom `uart` external
-# component that no longer compiles against current ESPHome (it used the removed
-# CORE.using_esp_idf). TubesZB's rewrite drops that fork — it uses mainline uart
-# and applies hardware CTS/RTS flow control via an on_boot ESP-IDF lambda.
+# Renovate nudges the dependency dashboard when upstream main moves; re-diff,
+# re-sync, then bump the digest above.
 #
 # Local adaptations vs upstream:
 #   - name/project come from common/core.yaml (our versioning)
@@ -82,8 +78,9 @@ esp32:
       CONFIG_UART_ISR_IN_IRAM: "y"
 
 external_components:
-  # Bumped to pick up the esphome 2026.7.0 fix (get_use_address_to) for stream_server.
-  # Pinned to a commit (repo has no releases); Renovate tracks the main-branch digest.
+  # Pinned commit carries the esphome 2026.7.0 get_use_address_to fix for
+  # stream_server. Upstream floats this ref; we pin for reproducible builds and
+  # Renovate tracks the main-branch digest (repo has no releases).
   # renovate: datasource=git-refs depName=tube0013/esphome-components
   - source: github://tube0013/esphome-components@9c64319422abf7aa297201e2c54ffd9fe7c2fb39
     components: [stream_server, efr32_flasher, efr32_info]

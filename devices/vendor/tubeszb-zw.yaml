@@ -1,16 +1,11 @@
-# Vendored + adapted from TubesZB's maintained Z-Wave config:
+# Vendored (copied) from TubesZB's maintained Z-Wave config so we can adapt it:
+# a remote package include can't strip/override the pieces listed below.
 #   github://tube0013/TubesZB-ESPHome-Builder/esphome-config/tubeszb-zw.yaml
 #
-# Renovate nudges (dependency dashboard) when upstream main moves past this point,
-# so we can re-diff and re-sync. Bump the digest below after re-vendoring.
 # renovate: datasource=git-refs depName=tube0013/TubesZB-ESPHome-Builder
 # vendored-from: main @9b538c3afbc10b3bec6bd0e5bfb4e09caab12818
-#
-# This replaces the old tube_gateways zw-kit package, which pulled oxan's
-# stream_server (a raw TCP serial bridge) that no longer compiles on esphome
-# 2026.7.0. TubesZB's rewrite drops the external stream_server entirely and uses
-# ESPHome's native `zwave_proxy` component — so Z-Wave now integrates through
-# Home Assistant's ESPHome + Z-Wave path rather than a tcp://:6638 socket.
+# Renovate nudges the dependency dashboard when upstream main moves; re-diff,
+# re-sync, then bump the digest above.
 #
 # Local adaptations vs upstream:
 #   - name/project come from common/core.yaml; ota + http_request from
