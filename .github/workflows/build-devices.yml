@@ -16,98 +16,154 @@ permissions:
   contents: write   # needed for releases
 
 jobs:
-  build-devices:
+  # Discover the device list and compute a single shared version so every
+  # parallel build stamps the same CalVer.
+  setup:
     runs-on: ubuntu-latest
-
+    outputs:
+      devices: ${{ steps.discover.outputs.devices }}
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
+
+      - name: Discover device configs
+        id: discover
+        run: |
+          json=$(ls devices/*.yaml \
+            | xargs -n1 basename \
+            | sed 's/\.yaml$//' \
+            | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "devices=$json" >> "$GITHUB_OUTPUT"
+          echo "Discovered devices: $json"
+
+      - name: Compute version
+        id: version
+        run: |
+          # CalVer: YYYY.MM.DD.<build> — build monotonically increases per run.
+          version="$(date +'%Y.%m.%d').${GITHUB_RUN_NUMBER}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Building version $version"
+
+  # One parallel job per device: compile, then upload its bin + manifest as an
+  # artifact. fail-fast: false so every device reports; a single failure still
+  # fails the `build` need, so `release` is skipped (no partial release).
+  build:
+    needs: setup
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        device: ${{ fromJSON(needs.setup.outputs.devices) }}
+    env:
+      VERSION: ${{ needs.setup.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
 
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
           python-version: 3.14
 
+      - name: Cache PlatformIO + pip
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: pio-${{ runner.os }}-${{ matrix.device }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            pio-${{ runner.os }}-${{ matrix.device }}-
+            pio-${{ runner.os }}-
+
       - name: Install ESPHome
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Compute version
-        id: version
-        run: |
-          # CalVer: YYYY.MM.DD.<build> — build monotonically increases per run
-          version="$(date +'%Y.%m.%d').${GITHUB_RUN_NUMBER}"
-          echo "VERSION=$version" >> "$GITHUB_ENV"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "Building version $version"
-
-      - name: Compile device binaries and manifests
+      - name: Build ${{ matrix.device }}
         run: |
           mkdir -p dist
-          for f in devices/*.yaml; do
-            [ -e "$f" ] || continue
-            name=$(basename "$f" .yaml)
-            echo "::group::Building $name"
+          name='${{ matrix.device }}'
+          f="devices/${name}.yaml"
 
-            if ! esphome -s version "$VERSION" -s auto_update true compile "$f"; then
-              echo "❌ Compile failed for $name"
-              exit 1
-            fi
+          echo "::group::Compiling $name ($VERSION)"
+          if ! esphome -s version "$VERSION" -s auto_update true compile "$f"; then
+            echo "❌ Compile failed for $name"
+            exit 1
+          fi
+          echo "::endgroup::"
 
-            # Locate the OTA image by mtime (the build dir is named after the
-            # internal `esphome: name:`, which may differ from the YAML filename,
-            # e.g. garage-door-controller.yaml -> garage-doors).
-            # esphome 2026.7.0+ (esp-idf/cmake) emits build/firmware.ota.bin;
-            # older PlatformIO builds used .pioenvs/<name>/firmware.bin.
-            bin=$(find devices/.esphome/build \
-                    \( -name 'firmware.ota.bin' -o -path '*/.pioenvs/*/firmware.bin' \) \
-                    -printf '%T@ %p\n' | sort -rn | head -n1 | cut -d' ' -f2-)
-            if [ -z "$bin" ] || [ ! -f "$bin" ]; then
-              echo "❌ Failed to find binary for $name"
-              exit 1
-            fi
-            cp "$bin" "dist/${name}.bin"
-            case "$bin" in
-              */build/firmware.ota.bin) build_dir="${bin%/build/firmware.ota.bin}" ;;
-              *) build_dir="${bin%/.pioenvs/*}" ;;
-            esac
-            echo "✅ Built $name → dist/${name}.bin (from $build_dir)"
+          # Locate the OTA image by mtime (the build dir is named after the
+          # internal `esphome: name:`, which may differ from the YAML filename,
+          # e.g. garage-door-controller.yaml -> garage-doors).
+          # esphome 2026.7.0+ (esp-idf/cmake) emits build/firmware.ota.bin;
+          # older PlatformIO builds used .pioenvs/<name>/firmware.bin.
+          bin=$(find devices/.esphome/build \
+                  \( -name 'firmware.ota.bin' -o -path '*/.pioenvs/*/firmware.bin' \) \
+                  -printf '%T@ %p\n' | sort -rn | head -n1 | cut -d' ' -f2-)
+          if [ -z "$bin" ] || [ ! -f "$bin" ]; then
+            echo "❌ Failed to find binary for $name"
+            exit 1
+          fi
+          cp "$bin" "dist/${name}.bin"
+          case "$bin" in
+            */build/firmware.ota.bin) build_dir="${bin%/build/firmware.ota.bin}" ;;
+            *) build_dir="${bin%/.pioenvs/*}" ;;
+          esac
+          echo "✅ Built $name → dist/${name}.bin (from $build_dir)"
 
-            # chipFamily must equal the compiled ESPHOME_VARIANT (e.g. ESP32, ESP32-S3);
-            # the OTA update component matches on `chipFamily == ESPHOME_VARIANT`.
-            chip="ESP32"
-            defines="$build_dir/src/esphome/core/defines.h"
-            if [ -f "$defines" ]; then
-              variant=$(grep -m1 'ESPHOME_VARIANT' "$defines" | sed -E 's/.*"([^"]+)".*/\1/')
-              [ -n "$variant" ] && chip="$variant"
-            fi
+          # chipFamily must equal the compiled ESPHOME_VARIANT (e.g. ESP32, ESP32-S3);
+          # the OTA update component matches on `chipFamily == ESPHOME_VARIANT`.
+          chip="ESP32"
+          defines="$build_dir/src/esphome/core/defines.h"
+          if [ -f "$defines" ]; then
+            variant=$(grep -m1 'ESPHOME_VARIANT' "$defines" | sed -E 's/.*"([^"]+)".*/\1/')
+            [ -n "$variant" ] && chip="$variant"
+          fi
 
-            # Point OTA at the immutable versioned release asset so a frozen device
-            # keeps pulling the exact build it was pinned to.
-            url="https://github.com/${{ github.repository }}/releases/download/${VERSION}/${name}.bin"
-            md5=$(md5sum "dist/${name}.bin" | cut -d' ' -f1)
-            manifest="dist/${name}-manifest.json"
-            {
-              printf '{\n'
-              printf '  "name": "%s",\n' "$name"
-              printf '  "version": "%s",\n' "$VERSION"
-              printf '  "builds": [\n'
-              printf '    {"chipFamily": "%s", "ota": {"md5": "%s", "path": "%s"}}\n' "$chip" "$md5" "$url"
-              printf '  ]\n'
-              printf '}\n'
-            } > "$manifest"
-            cat "$manifest"
-            echo "::endgroup::"
-          done
+          # Point OTA at the immutable versioned release asset so a frozen device
+          # keeps pulling the exact build it was pinned to.
+          url="https://github.com/${{ github.repository }}/releases/download/${VERSION}/${name}.bin"
+          md5=$(md5sum "dist/${name}.bin" | cut -d' ' -f1)
+          manifest="dist/${name}-manifest.json"
+          {
+            printf '{\n'
+            printf '  "name": "%s",\n' "$name"
+            printf '  "version": "%s",\n' "$VERSION"
+            printf '  "builds": [\n'
+            printf '    {"chipFamily": "%s", "ota": {"md5": "%s", "path": "%s"}}\n' "$chip" "$md5" "$url"
+            printf '  ]\n'
+            printf '}\n'
+          } > "$manifest"
+          cat "$manifest"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.device }}
+          path: dist/
+          retention-days: 1
+
+  # Gather every device's artifact and publish the releases once, after all
+  # builds succeed.
+  release:
+    needs: [ setup, build ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: dist-*
+          merge-multiple: true
 
       - name: Publish versioned release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ steps.version.outputs.version }}
-          name: ${{ steps.version.outputs.version }}
+          tag_name: ${{ needs.setup.outputs.version }}
+          name: ${{ needs.setup.outputs.version }}
           files: dist/*
           fail_on_unmatched_files: true
           make_latest: true
@@ -119,7 +175,7 @@ jobs:
         with:
           tag_name: latest
           name: Latest Device Builds
-          body: "Rolling release — always the newest build. Currently: ${{ steps.version.outputs.version }}"
+          body: "Rolling release — always the newest build. Currently: ${{ needs.setup.outputs.version }}"
           files: dist/*
           fail_on_unmatched_files: true
           make_latest: false
