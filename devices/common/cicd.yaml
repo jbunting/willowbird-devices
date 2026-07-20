@@ -12,12 +12,27 @@ ota:
 http_request:
   buffer_size_rx: 2048
   buffer_size_tx: 2048
+
+# Group every firmware sensor/control below into one "Firmware" section in the
+# web UI. This merges with each device's own web_server sorting_groups. version 3
+# is required for sorting_groups and matches what the web-enabled devices already
+# set; on a device with no other web_server (e.g. bluetooth-proxy) this adds a
+# minimal v3 web UI.
+web_server:
+  version: 3
+  sorting_groups:
+    - id: firmware_group
+      name: Firmware
+      sorting_weight: 100
+
 update:
   - platform: http_request
     id: firmware_update
     name: Firmware Update
     source: https://github.com/jbunting/willowbird-devices/releases/download/latest/${name}-manifest.json
     update_interval: 1min
+    web_server:
+      sorting_group_id: firmware_group
     on_update_available:
       then:
         # Auto-install only when it's a mainline build (auto_update=true) AND the
@@ -39,6 +54,8 @@ switch:
     icon: mdi:snowflake
     entity_category: config
     optimistic: true
+    web_server:
+      sorting_group_id: firmware_group
     # Persist the freeze choice across reboots/OTA.
     restore_mode: RESTORE_DEFAULT_OFF
 
@@ -48,6 +65,8 @@ button:
     id: update_to_latest
     icon: mdi:cloud-download
     entity_category: config
+    web_server:
+      sorting_group_id: firmware_group
     # Pull the latest release now, regardless of freeze/build channel. Lets a
     # dev or frozen device update on demand — it lands on the mainline build and
     # auto-updates from there. No-op if already up to date.
@@ -61,6 +80,8 @@ text_sensor:
     id: current_firmware_version
     icon: mdi:tag
     entity_category: diagnostic
+    web_server:
+      sorting_group_id: firmware_group
     # Set at compile time from the project version substitution.
     lambda: 'return {"${version}"};'
 
@@ -69,6 +90,8 @@ text_sensor:
     id: build_channel
     icon: mdi:source-branch
     entity_category: diagnostic
+    web_server:
+      sorting_group_id: firmware_group
     # Mainline builds are the only ones compiled with auto_update=true.
     lambda: 'return {${auto_update} ? "mainline" : "dev"};'
 
@@ -77,6 +100,8 @@ text_sensor:
     id: available_firmware_version
     icon: mdi:cloud-tag
     entity_category: diagnostic
+    web_server:
+      sorting_group_id: firmware_group
     lambda: |-
       const std::string &latest = id(firmware_update).update_info.latest_version;
       if (latest.empty())
@@ -91,6 +116,8 @@ sensor:
     unit_of_measurement: d
     accuracy_decimals: 0
     entity_category: diagnostic
+    web_server:
+      sorting_group_id: firmware_group
     # How far out of date this device is. Date math lives in the C++ helper
     # (common/firmware_status.h); unknown for dev builds or before the first
     # update check.
@@ -107,6 +134,8 @@ binary_sensor:
     id: firmware_up_to_date
     icon: mdi:check-decagram
     entity_category: diagnostic
+    web_server:
+      sorting_group_id: firmware_group
     lambda: |-
       switch (id(firmware_update).state) {
         case update::UPDATE_STATE_NO_UPDATE:
