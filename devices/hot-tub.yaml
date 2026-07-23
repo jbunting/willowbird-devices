@@ -54,10 +54,10 @@ web_server:
       sorting_weight: 7
 
 external_components:
-  # Temporary fork carrying the esphome 2026.7.0 fix (get_use_address_to) until
-  # the upstream PR lands: https://github.com/Ylianst/ESP-IQ2020/pull/111
-  # Revert to github://ylianst/esp-iq2020@<ref> once merged.
-  - source: github://jbunting/ESP-IQ2020@e9c441f27e9b06d9cf397b3cabb4f43f70c54750
+  # Upstream has no releases/tags, so track main's commit digest via git-refs;
+  # a move on main opens a digest-bump PR signalling changes to re-check.
+  # renovate: datasource=git-refs depName=Ylianst/ESP-IQ2020
+  - source: github://Ylianst/ESP-IQ2020@74ca3072fac850528cfad89bb3f84c019e616166
     components: [iq2020]
 
 # Make sure tx/rx pins are correct for your device.
