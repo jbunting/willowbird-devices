@@ -5,6 +5,13 @@
     ":dependencyDashboard",
     ":semanticCommits"
   ],
+  "description": [
+    "ignorePaths override: config:recommended pulls in the :ignoreModulesAndTests preset, whose ignorePaths includes **/vendor/** and **/examples/**. Our first-class ESPHome configs live in devices/vendor/ (the vendored TubesZB Z-Wave/MGM24 configs) and examples/, so with the default ignorePaths Renovate silently skips those files before any manager runs — the `# renovate:` annotations there are never detected. Narrow the ignore list to just the npm-style trees this repo will never contain, so our custom managers see the vendored configs. (.esphome/ build caches are gitignored, so Renovate never sees them.)"
+  ],
+  "ignorePaths": [
+    "**/node_modules/**",
+    "**/bower_components/**"
+  ],
   "packageRules": [
     {
       "description": "Group all ESPHome updates together",
