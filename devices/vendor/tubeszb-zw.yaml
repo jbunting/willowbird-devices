@@ -3,7 +3,7 @@
 #   github://tube0013/TubesZB-ESPHome-Builder/esphome-config/tubeszb-zw.yaml
 #
 # renovate: datasource=git-refs depName=tube0013/TubesZB-ESPHome-Builder
-# vendored-from: main @9b538c3afbc10b3bec6bd0e5bfb4e09caab12818
+# vendored-from: main @7f968ca5aa95db46bd67e7be209946c45cb11bf5
 # Renovate nudges the dependency dashboard when upstream main moves; re-diff,
 # re-sync, then bump the digest above.
 #
