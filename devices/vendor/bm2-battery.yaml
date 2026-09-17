@@ -1,0 +1,203 @@
+# Vendored (copied) from DJBenson's BM2 battery-monitor config so we can adapt
+# it: upstream ships a whole standalone device config plus a header file to copy
+# by hand, so there is no package or external component to include remotely.
+#   github://DJBenson/bm2-esphome/bm2-esphome.yaml
+#
+# renovate: datasource=git-refs depName=DJBenson/bm2-esphome
+# vendored-from: main @8f9e7f245aa7ab0a14a115a20e37fdbfd8571ec8
+# Renovate nudges the dependency dashboard when upstream main moves; re-diff,
+# re-sync, then bump the digest above. bm2_aes.h is vendored from the same
+# commit but the vendored-resync check does not cover it — that check only
+# diffs .yaml — so re-check the header by hand whenever this digest moves.
+#
+# A BM2 is a BLE battery monitor that broadcasts AES-encrypted voltage and
+# state-of-charge in its manufacturer data. Nothing connects to it; this is a
+# passive listener, so it costs the host a lambda on advertisements it is
+# already receiving.
+#
+# Local adaptations vs upstream:
+#   - device shell dropped (esphome name / esp32 / wifi / logger / api / ota).
+#     The host device config plus common/core.yaml and common/cicd.yaml
+#     already provide all of it.
+#   - scan_parameters dropped. Upstream asks for a passive 1100ms scan; the
+#     host is a Bluetooth proxy that already scans actively and continuously,
+#     and narrowing the scan here would degrade every other BLE device it
+#     serves. Active scanning still delivers these advertisements.
+#   - the MAC test moved out of the lambda into on_ble_advertise's own
+#     mac_address filter, so a non-matching advertisement no longer allocates a
+#     std::string just to compare it. On a proxy that is nearly every packet.
+#   - "Last Updated" is a text_sensor publishing ISO-8601 rather than a numeric
+#     sensor. Upstream's numeric one shares a name with its age text_sensor, so
+#     the two collide into one entity in Home Assistant, and an ESPHome sensor
+#     is a float32 — epoch seconds land on a ~128 second grid.
+#   - presence holds at unknown until the first advertisement, instead of
+#     reporting present for one timeout window after every boot.
+#   - entity names take a ${bm2_name} prefix, and entities carry web_server
+#     sorting groups, per this repo's web UI convention.
+
+substitutions:
+  # Prefix for this monitor's entity names. The host device supplies the rest of
+  # the identity, so name it after the battery ("Tractor Battery"), not the BM2.
+  bm2_name: "BM2 Battery"
+  # Seconds without an advertisement before the battery counts as away.
+  bm2_presence_timeout_s: "120"
+  # Seconds between published readings. The BM2 itself broadcasts every ~10s;
+  # this throttles what reaches Home Assistant.
+  bm2_publish_interval_s: "30"
+
+esphome:
+  # Path is resolved relative to the device config dir (devices/), not this file.
+  includes:
+    - vendor/bm2_aes.h
+
+web_server:
+  sorting_groups:
+    - id: bm2_group
+      name: ${bm2_name}
+      sorting_weight: 30
+
+globals:
+  - id: bm2_last_seen_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
+  - id: bm2_last_publish_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
+
+time:
+  - platform: homeassistant
+    id: ha_time
+
+esp32_ble_tracker:
+  on_ble_advertise:
+    - mac_address: ${bm2_mac}
+      then:
+        - lambda: |-
+            auto mfd = x.get_manufacturer_datas();
+            if (mfd.empty()) return;
+
+            static const uint8_t BT_KEY[16] = {108,101,97,103,101,110,100,255,254,49,56,56,50,52,54,54};
+            static const uint8_t BT_IV[16]  = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+
+            for (auto &md : mfd) {
+              auto &data = md.data;
+
+              // Only the BM2 payload is 14 bytes. Ignore the 23-byte iBeacon frame.
+              if (data.size() != 14) continue;
+
+              auto u = md.uuid.get_uuid();
+              uint16_t mid = 0;
+              if (u.len == ESP_UUID_LEN_16) {
+                mid = u.uuid.uuid16;
+              } else if (u.len == ESP_UUID_LEN_32) {
+                mid = u.uuid.uuid32 & 0xFFFF;
+              }
+
+              // The manufacturer id is the first cipher block's first two bytes.
+              uint8_t in[16];
+              in[0] = mid & 0xFF;
+              in[1] = (mid >> 8) & 0xFF;
+              memcpy(in + 2, data.data(), 14);
+
+              uint8_t out[16];
+              if (!bm2_aes_cbc_decrypt_16(BT_KEY, BT_IV, in, out)) return;
+
+              uint8_t vmsb = out[6];
+              uint8_t vlsb = out[7];
+              float voltage = ((vmsb << 8) | vlsb) / 100.0f;
+              uint8_t charge = out[8];
+
+              // Presence tracks any decodable advertisement; the range test
+              // below only gates what gets published as a reading.
+              id(bm2_last_seen_ms) = millis();
+              if (voltage >= 10.0f && voltage <= 15.0f && charge > 0 && charge <= 100) {
+                uint32_t now = millis();
+                if (now - id(bm2_last_publish_ms) < (${bm2_publish_interval_s} * 1000)) {
+                  continue;
+                }
+                id(bm2_last_publish_ms) = now;
+                id(bm2_voltage).publish_state(voltage);
+                id(bm2_charge).publish_state(charge);
+                // UTC with a literal Z. %z only expands when a timezone is
+                // configured, and Home Assistant rejects a timestamp with no
+                // offset, so spelling out UTC keeps this independent of both.
+                auto t = id(ha_time).utcnow();
+                if (t.is_valid()) {
+                  id(bm2_last_updated).publish_state(t.strftime("%Y-%m-%dT%H:%M:%SZ"));
+                }
+              }
+            }
+
+sensor:
+  - platform: template
+    name: "${bm2_name} Voltage"
+    id: bm2_voltage
+    unit_of_measurement: "V"
+    accuracy_decimals: 2
+    device_class: voltage
+    state_class: measurement
+    web_server:
+      sorting_group_id: bm2_group
+      sorting_weight: 10
+
+  - platform: template
+    name: "${bm2_name} Charge"
+    id: bm2_charge
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+    device_class: battery
+    state_class: measurement
+    web_server:
+      sorting_group_id: bm2_group
+      sorting_weight: 20
+
+binary_sensor:
+  - platform: template
+    name: "${bm2_name} Presence"
+    id: bm2_presence
+    device_class: presence
+    web_server:
+      sorting_group_id: bm2_group
+      sorting_weight: 30
+
+text_sensor:
+  - platform: template
+    name: "${bm2_name} Last Updated"
+    id: bm2_last_updated
+    device_class: timestamp
+    disabled_by_default: true
+    web_server:
+      sorting_group_id: bm2_group
+      sorting_weight: 40
+
+  - platform: template
+    name: "${bm2_name} Last Update Age"
+    id: bm2_last_update_age
+    icon: mdi:timer-outline
+    entity_category: diagnostic
+    update_interval: 5s
+    web_server:
+      sorting_group_id: bm2_group
+      sorting_weight: 50
+    lambda: |-
+      if (id(bm2_last_publish_ms) == 0) {
+        return {"never"};
+      }
+      uint32_t age_s = (millis() - id(bm2_last_publish_ms)) / 1000;
+      return {to_string(age_s) + "s ago"};
+
+interval:
+  - interval: 5s
+    then:
+      - lambda: |-
+          // Stay unknown until the first advertisement arrives. The elapsed-time
+          // test below reads a never-set timestamp as "just seen", so without
+          // this the battery reports present for one timeout window after every
+          // boot, whether or not it is there.
+          if (id(bm2_last_seen_ms) == 0) return;
+
+          const uint32_t now = millis();
+          bool present = (now - id(bm2_last_seen_ms)) <= (${bm2_presence_timeout_s} * 1000);
+          id(bm2_presence).publish_state(present);
