@@ -1,5 +1,10 @@
 substitutions:
   name: "bluetooth-proxy"
+  # BM2 battery monitor to listen for. Reading one needs the address and nothing
+  # else — the AES key is fixed across every BM2 — so a wrong value here is
+  # silent: the proxy keeps working and the battery entities never leave unknown.
+  bm2_mac: "E4:66:E5:8A:BC:CD"
+  bm2_name: "BM2 Battery"
 packages:
   # renovate: datasource=github-releases depName=esphome/bluetooth-proxies
   esphome.bluetooth-proxy: github://esphome/bluetooth-proxies/olimex/olimex-esp32-poe-iso.yaml@26.5.1
@@ -7,6 +12,10 @@ packages:
     file: common/core.yaml
   willowbird-ota: !include
     file: common/cicd.yaml
+  # Passive BM2 battery decode. Listens to advertisements the proxy already
+  # receives; it opens no connection and takes no bluetooth_proxy slot.
+  bm2-battery: !include
+    file: vendor/bm2-battery.yaml
 api:
 
 # Web UI. The shared cicd package already provides the v3 web_server and the
