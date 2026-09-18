@@ -57,7 +57,7 @@ external_components:
   # Upstream has no releases/tags, so track main's commit digest via git-refs;
   # a move on main opens a digest-bump PR signalling changes to re-check.
   # renovate: datasource=git-refs depName=Ylianst/ESP-IQ2020
-  - source: github://Ylianst/ESP-IQ2020@74ca3072fac850528cfad89bb3f84c019e616166
+  - source: github://Ylianst/ESP-IQ2020@bb1994e4f7d2f43485d43ca7d75b0558b51081f7
     components: [iq2020]
 
 # Make sure tx/rx pins are correct for your device.
