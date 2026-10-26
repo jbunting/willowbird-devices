@@ -82,7 +82,7 @@ external_components:
   # stream_server. Upstream floats this ref; we pin for reproducible builds and
   # Renovate tracks the main-branch digest (repo has no releases).
   # renovate: datasource=git-refs depName=tube0013/esphome-components
-  - source: github://tube0013/esphome-components@9c64319422abf7aa297201e2c54ffd9fe7c2fb39
+  - source: github://tube0013/esphome-components@0e35b4afe1ad12b17418626d3bd75b7bcad52de6
     components: [stream_server, efr32_flasher, efr32_info]
     refresh: 1d
 
